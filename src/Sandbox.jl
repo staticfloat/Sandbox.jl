@@ -155,6 +155,7 @@ function probe_executor(executor::SandboxExecutor; verbose::Bool = false, test_r
         end
 
         # Command should execute successfully
+        user_cmd = ignorestatus(user_cmd)
         if !run(executor, config, user_cmd)
             if verbose
                 cmd_stdout = String(take!(cmd_stdout))
