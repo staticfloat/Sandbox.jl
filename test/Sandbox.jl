@@ -4,7 +4,7 @@ all_executors = Sandbox.all_executors
 
 # Can we run `sudo` without a password?  If not, don't attempt to test the privileged runner
 if !success(`sudo -k -n true`)
-    all_executors = filter(exe -> !isa(exe, PrivilegedUserNamespacesExecutor), all_executors)
+    all_executors = filter(exe -> exe != PrivilegedUserNamespacesExecutor, all_executors)
 end
 
 for executor in all_executors
