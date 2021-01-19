@@ -1,0 +1,6 @@
+[AlpineRootfs]
+git-tree-sha1 = "501070a76cc373d27d66ab6376341a6d8ad9e628"
+
+    [[AlpineRootfs.download]]
+    sha256 = "1770f9f2214497f3c1caccc6b9e692c34e2dce00924bab5102e76388f770a64c"
+    url = "https://github.com/alpinelinux/docker-alpine/raw/v3.12/x86_64/alpine-minirootfs-3.12.3-x86_64.tar.gz"
