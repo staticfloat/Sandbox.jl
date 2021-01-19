@@ -122,6 +122,11 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
         end
     end
 
+    # Add in entrypoint, if it is set
+    if config.entrypoint !== nothing
+        append!(cmd_string, ["--entrypoint", config.entrypoint])
+    end
+
     # Finally, append the docker image name user-requested command string
     push!(cmd_string, image_name)
     append!(cmd_string, user_cmd.exec)

@@ -28,6 +28,7 @@ using Test, Artifacts
             Dict("/workspace" => @__DIR__),
             # env
             Dict("PATH" => "/bin:/usr/bin");
+            entrypoint = "/init",
             pwd = "/lib",
             stdin = Base.stdout,
             stdout = stdout,
@@ -37,6 +38,7 @@ using Test, Artifacts
         @test config.read_only_maps["/lib"] == "/lib"
         @test config.read_write_maps["/workspace"] == @__DIR__
         @test config.env["PATH"] == "/bin:/usr/bin"
+        @test config.entrypoint == "/init"
         @test config.pwd == "/lib"
         @test config.stdin == Base.stdout
         @test config.stdout == stdout
@@ -53,5 +55,6 @@ using Test, Artifacts
         @test_throws ArgumentError SandboxConfig(Dict("/" => rootfs_dir), Dict("rootfs" => rootfs_dir))
         @test_throws ArgumentError SandboxConfig(Dict("/" => rootfs_dir), Dict("/rootfs" => basename(rootfs_dir)))
         @test_throws ArgumentError SandboxConfig(Dict("/" => rootfs_dir); pwd="lib")
+        @test_throws ArgumentError SandboxConfig(Dict("/" => rootfs_dir); entrypoint="init")
     end
 end

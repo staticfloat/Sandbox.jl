@@ -16,6 +16,10 @@ Sandbox executors require a configuration to set up the environment properly.
 
 - `env`: Dictionary mapping of environment variables that should be set within the sandbox.
 
+- `entrypoint`: Executable that gets passed the actual command being run.
+  - This is a path within the sandbox, and must be absolute.
+  - Defaults to `nothing`, which causes the command to be executed directly.
+
 - `pwd`: Set the working directory of the command that will be run.
   - This is a path within the sandbox, and must be absolute.
 
@@ -28,6 +32,7 @@ struct SandboxConfig
     read_only_maps::Dict{String,String}
     read_write_maps::Dict{String,String}
     env::Dict{String,String}
+    entrypoint::Union{String,Nothing}
     pwd::String
 
     stdin::AnyRedirectable
@@ -38,6 +43,7 @@ struct SandboxConfig
     function SandboxConfig(read_only_maps::Dict{String,String},
                            read_write_maps::Dict{String,String} = Dict{String,String}(),
                            env::Dict{String,String} = Dict{String,String}();
+                           entrypoint::Union{String,Nothing} = nothing,
                            pwd::String = "/",
                            stdin::AnyRedirectable = Base.devnull,
                            stdout::AnyRedirectable = Base.stdout,
@@ -45,7 +51,8 @@ struct SandboxConfig
                            verbose::Bool = false)
         # Lint the maps to ensure that all are absolute paths:
         for path in [keys(read_only_maps)..., values(read_only_maps)...,
-                     keys(read_write_maps)..., values(read_write_maps)..., pwd]
+                     keys(read_write_maps)..., values(read_write_maps)...,
+                     something(entrypoint, "/"), pwd]
             if !startswith(path, "/")
                 throw(ArgumentError("Path mapping $(path) is not absolute!"))
             end
@@ -63,6 +70,6 @@ struct SandboxConfig
         if !haskey(read_only_maps, "/")
             throw(ArgumentError("Must provide a read-only root mapping!"))
         end
-        return new(read_only_maps, read_write_maps, env, pwd, stdin, stdout, stderr, verbose)
+        return new(read_only_maps, read_write_maps, env, entrypoint, pwd, stdin, stdout, stderr, verbose)
     end
 end
