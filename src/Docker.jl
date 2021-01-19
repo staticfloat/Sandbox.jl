@@ -37,15 +37,13 @@ function load_timestamps()
 end
 
 function save_timestamp(image_name::String, timestamp::Float64)
-    open(timestamps_path(), read=true, write=true, create=true) do io
-        timestamps = try
-            TOML.parse(io)
-        catch
-            return Dict()
-        end
-        seekstart(io)
+    timestamps_toml = entry = sprint() do io
+        timestamps = load_timestamps()
         timestamps[image_name] = timestamp
         TOML.print(io, timestamps)
+    end
+    open(timestamps_path(), write=true) do io
+        write(io, timestamps_toml)
     end
 end
 
