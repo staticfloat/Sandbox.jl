@@ -9,7 +9,7 @@ on:
 
 jobs:
   test:
-    name: Julia nightly - x64 - runner ${{ matrix.runner }} - SquashFS ${{ matrix.squashfs }}
+    name: Julia ${{ matrix.julia-version }} - ${{ matrix.julia-arch }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -17,11 +17,14 @@ jobs:
         julia-version:
           - "^1.6.0-0"
           - "nightly"
+        julia-arch:
+          - "x64"
 
     steps:
       - uses: actions/checkout@v2
       - uses: julia-actions/setup-julia@v1
         with:
           version: ${{ matrix.julia-version }}
+          arch: ${{ matrix.julia-arch }}
       - uses: julia-actions/julia-buildpkg@latest
       - uses: julia-actions/julia-runtest@latest
