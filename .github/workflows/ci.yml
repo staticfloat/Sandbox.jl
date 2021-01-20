@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: "main"
+    tags: ["*"]
+  pull_request:
+  release:
+
+jobs:
+  test:
+    name: Julia nightly - x64 - runner ${{ matrix.runner }} - SquashFS ${{ matrix.squashfs }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        julia-version:
+          - "^1.6.0-0"
+          - "nightly"
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: julia-actions/setup-julia@v1
+        with:
+          version: ${{ matrix.julia-version }}
+      - uses: julia-actions/julia-buildpkg@latest
+      - uses: julia-actions/julia-runtest@latest
