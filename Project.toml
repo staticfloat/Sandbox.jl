@@ -16,8 +16,9 @@ UserNSSandbox_jll = "b88861f7-1d72-59dd-91e7-a8cc876a4984"
 [compat]
 JLLWrappers = "1.2"
 Scratch = "1"
-julia = "1.6"
+TOML = "1.0"
 UserNSSandbox_jll = "2021.1.19"
+julia = "1.6"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
