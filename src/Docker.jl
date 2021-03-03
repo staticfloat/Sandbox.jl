@@ -49,9 +49,15 @@ end
 
 docker_image_name(root_path::String) = "sandbox_rootfs:$(string(Base._crc32c(root_path), base=16))"
 function should_build_docker_image(root_path::String)
+    # If the image doesn't exist at all, always return true
+    image_name = docker_image_name(root_path)
+    if !success(`docker image inspect $(image_name)`)
+        return true
+    end
+
     # If this image has been built before, compare its historical timestamp to the current one
     curr_ctime = max_directory_ctime(root_path)
-    prev_ctime = get(load_timestamps(), docker_image_name(root_path), 0.0)
+    prev_ctime = get(load_timestamps(), image_name, 0.0)
     return curr_ctime != prev_ctime
 end
 
@@ -94,7 +100,7 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
     end
 
     # Build the docker image that corresponds to this rootfs
-    image_name = build_docker_image(config.read_only_maps["/"])
+    image_name = build_docker_image(config.read_only_maps["/"]; verbose=config.verbose)
 
     # Start in the right directory
     append!(cmd_string, ["-w", config.pwd])
