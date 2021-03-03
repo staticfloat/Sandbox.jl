@@ -1,6 +1,6 @@
 [AlpineRootfs]
-git-tree-sha1 = "501070a76cc373d27d66ab6376341a6d8ad9e628"
+git-tree-sha1 = "562768a40e93d27b79fbedf9cfa7883409d494ea"
 
     [[AlpineRootfs.download]]
-    sha256 = "1770f9f2214497f3c1caccc6b9e692c34e2dce00924bab5102e76388f770a64c"
-    url = "https://github.com/alpinelinux/docker-alpine/raw/v3.12/x86_64/alpine-minirootfs-3.12.3-x86_64.tar.gz"
+    sha256 = "5a588162779446d8e5235bf6fc97588d1e197f44cf64e3a1f88ae828270456a7"
+    url = "https://github.com/alpinelinux/docker-alpine/raw/2f3c3015951938c521e752899a92ecd618e0c05b/x86_64/alpine-minirootfs-3.12.4-x86_64.tar.gz"
