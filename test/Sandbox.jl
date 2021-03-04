@@ -7,13 +7,13 @@ if !success(`sudo -k -n true`)
     all_executors = filter(exe -> exe != PrivilegedUserNamespacesExecutor, all_executors)
 end
 
+rootfs_dir = artifact"AlpineRootfs"
 for executor in all_executors
     if !executor_available(executor)
         @error("Skipping $(executor) tests, as it does not seem to be available")
         continue
     end
 
-    rootfs_dir = artifact"AlpineRootfs"
     @testset "$(executor) Sandboxing" begin
         @testset "capturing stdout/stderr" begin
             stdout = IOBuffer()
@@ -23,15 +23,19 @@ for executor in all_executors
                 stdout,
                 stderr,
             )
-            @test run(executor(), config, `/bin/sh -c "echo stdout; echo stderr >&2"`)
-            @test String(take!(stdout)) == "stdout\n";
-            @test String(take!(stderr)) == "stderr\n";
+            with_executor(executor) do exe
+                @test run(exe, config, `/bin/sh -c "echo stdout; echo stderr >&2"`)
+                @test String(take!(stdout)) == "stdout\n";
+                @test String(take!(stderr)) == "stderr\n";
+            end
         end
 
         @testset "ignorestatus()" begin
             config = SandboxConfig(Dict("/" => rootfs_dir))
-            @test_throws ProcessFailedException run(executor(), config, `/bin/sh -c "false"`)
-            @test !run(executor(), config, ignorestatus(`/bin/sh -c "false"`))
+            with_executor(executor) do exe
+                @test_throws ProcessFailedException run(exe, config, `/bin/sh -c "false"`)
+                @test !run(exe, config, ignorestatus(`/bin/sh -c "false"`))
+            end
         end
 
         @testset "environment passing" begin
@@ -50,13 +54,17 @@ for executor in all_executors
                 stdout,
             )
             user_cmd = `/bin/sh -c "echo \$PATH \$LD_LIBRARY_PATH \$DYLD_LIBRARY_PATH \$SHELL"`
-            @test run(executor(), config, user_cmd)
-            @test String(take!(stdout)) == "for science you monster\n";
+            with_executor(executor) do exe
+                @test run(exe, config, user_cmd)
+                @test String(take!(stdout)) == "for science you monster\n";
+            end
 
             # Test that setting some environment onto `user_cmd` can override the `config` env:
             user_cmd = setenv(user_cmd, "DYLD_LIBRARY_PATH" => "my", "SHELL" => "friend")
-            @test run(executor(), config, user_cmd)
-            @test String(take!(stdout)) == "for science my friend\n";
+            with_executor(executor) do exe
+                @test run(exe, config, user_cmd)
+                @test String(take!(stdout)) == "for science my friend\n";
+            end
         end
 
         @testset "reading from maps" begin
@@ -69,8 +77,10 @@ for executor in all_executors
                     Dict("/" => rootfs_dir, "/glados" => dir);
                     stdout,
                 )
-                @test run(executor(), config, `/bin/sh -c "cat /glados/note.txt"`)
-                @test String(take!(stdout)) == "great success";
+                with_executor(executor) do exe
+                    @test run(exe, config, `/bin/sh -c "cat /glados/note.txt"`)
+                    @test String(take!(stdout)) == "great success";
+                end
             end
         end
 
@@ -117,27 +127,31 @@ for executor in all_executors
                     Dict("/read_write" => read_write_dir),
                     stdout = stdout,
                     stderr = stderr,
+                    persist = false,
                 )
-                # Modifying the rootfs works, and is temporary; for docker containers this is
-                # modifying the rootfs image, for userns this is all mounted within an overlay backed by a tmpfs
-                @test run(executor(), config, `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`)
-                @test String(take!(stdout)) == "aperture\n";
-                @test isempty(take!(stderr))
-                @test run(executor(), config, `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`)
-                @test String(take!(stdout)) == "aperture\n";
-                @test isempty(take!(stderr))
+                # Modifying the rootfs works, and is temporary; for docker containers this is modifying
+                # the rootfs image, for userns this is all mounted within an overlay backed by a tmpfs,
+                # because we have `persist` set to `false`.
+                with_executor(executor) do exe
+                    @test run(exe, config, `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`)
+                    @test String(take!(stdout)) == "aperture\n";
+                    @test isempty(take!(stderr))
+                    @test run(exe, config, `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`)
+                    @test String(take!(stdout)) == "aperture\n";
+                    @test isempty(take!(stderr))
 
-                # An actual read-only mount will not work, because it's truly read-only
-                @test !run(executor(), config, ignorestatus(`/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`))
-                @test occursin("Read-only file system", String(take!(stderr)))
+                    # An actual read-only mount will not allow writing, because it's truly read-only
+                    @test !run(exe, config, ignorestatus(`/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`))
+                    @test occursin("Read-only file system", String(take!(stderr)))
 
-                # A read-write mount, on the other hand, will be permanent
-                @test run(executor(), config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`)
-                @test String(take!(stdout)) == "aperture\n";
-                @test isempty(take!(stderr))
-                @test run(executor(), config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`)
-                @test String(take!(stdout)) == "aperture\naperture\n";
-                @test isempty(take!(stderr))
+                    # A read-write mount, on the other hand, will be permanent
+                    @test run(exe, config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`)
+                    @test String(take!(stdout)) == "aperture\n";
+                    @test isempty(take!(stderr))
+                    @test run(exe, config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`)
+                    @test String(take!(stdout)) == "aperture\naperture\n";
+                    @test isempty(take!(stderr))
+                end
             end
         end
 
@@ -174,13 +188,60 @@ for executor in all_executors
                 chmod(joinpath(read_only_dir, "entrypoint"), 0o755)
 
                 # Modifying the read-only files now works, and is temporary
-                @test run(executor(), config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
-                @test String(take!(stdout)) == "entrypoint activated\naperture\n";
-                @test isempty(take!(stderr))
-                @test run(executor(), config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
-                @test String(take!(stdout)) == "entrypoint activated\naperture\n";
-                @test isempty(take!(stderr))
+                with_executor(executor) do exe
+                    @test run(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
+                    @test String(take!(stdout)) == "entrypoint activated\naperture\n";
+                    @test isempty(take!(stderr))
+                    @test run(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
+                    @test String(take!(stdout)) == "entrypoint activated\naperture\n";
+                    @test isempty(take!(stderr))
+                end
             end
         end
+
+        @testset "persistence" begin
+            mktempdir() do dir
+                stdout = IOBuffer()
+                stderr = IOBuffer()
+                config = SandboxConfig(
+                    Dict("/" => rootfs_dir),
+                    stdout = stdout,
+                    stderr = stderr,
+                    persist = true,
+                )
+
+                # Modifying the read-only files is persistent within a single executor
+                cmd = `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`
+                with_executor(executor) do exe
+                    @test run(exe, config, cmd)
+                    @test String(take!(stdout)) == "aperture\n";
+                    @test isempty(take!(stderr))
+                    @test run(exe, config, cmd)
+                    @test String(take!(stdout)) == "aperture\naperture\n";
+                    @test isempty(take!(stderr))
+                end
+
+                with_executor(executor) do exe
+                    @test run(exe, config, cmd)
+                    @test String(take!(stdout)) == "aperture\n";
+                    @test isempty(take!(stderr))
+                end
+            end
+        end
+    end
+end
+
+@testset "default executor" begin
+    stdout = IOBuffer()
+    stderr = IOBuffer()
+    config = SandboxConfig(
+        Dict("/" => rootfs_dir);
+        stdout,
+        stderr,
+    )
+    with_executor() do exe
+        @test run(exe, config, `/bin/sh -c "echo stdout; echo stderr >&2"`)
+        @test String(take!(stdout)) == "stdout\n";
+        @test String(take!(stderr)) == "stderr\n";
     end
 end

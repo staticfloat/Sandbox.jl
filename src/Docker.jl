@@ -1,4 +1,12 @@
-struct DockerExecutor <: SandboxExecutor
+using Random
+
+mutable struct DockerExecutor <: SandboxExecutor
+    label::String
+    DockerExecutor() = new(Random.randstring(10))
+end
+
+function cleanup(exe::DockerExecutor)
+    success(`docker system prune --force --filter=label=$(docker_image_label(exe))`)
 end
 
 Base.show(io::IO, exe::DockerExecutor) = write(io, "Docker Executor")
@@ -19,7 +27,9 @@ function executor_available(::Type{DockerExecutor}; verbose::Bool = false)
         end
         return false
     end
-    return probe_executor(DockerExecutor(); test_read_only_map=true, test_read_write_map=true, verbose)
+    return with_executor(DockerExecutor) do exe
+        return probe_executor(exe; test_read_only_map=true, test_read_write_map=true, verbose)
+    end
 end
 
 timestamps_path() = joinpath(@get_scratch!("docker_timestamp_hashes"), "path_timestamps.toml")
@@ -48,6 +58,7 @@ function save_timestamp(image_name::String, timestamp::Float64)
 end
 
 docker_image_name(root_path::String) = "sandbox_rootfs:$(string(Base._crc32c(root_path), base=16))"
+docker_image_label(exe::DockerExecutor) = string("org.julialang.sandbox.jl=", exe.label)
 function should_build_docker_image(root_path::String)
     # If the image doesn't exist at all, always return true
     image_name = docker_image_name(root_path)
@@ -90,17 +101,36 @@ function build_docker_image(root_path::String; verbose::Bool = false)
     return image_name
 end
 
+function commit_previous_run(exe::DockerExecutor, image_name::String)
+    ids = split(readchomp(`docker ps -a --filter label=$(docker_image_label(exe)) --format "{{.ID}}"`))
+    if isempty(ids)
+        return image_name
+    end
+
+    # We'll take the first docker container ID that we get, as its the most recent, and commit it.
+    image_name = "sandbox_rootfs_persist:$(first(ids))"
+    run(`docker commit $(first(ids)) $(image_name)`)
+    return image_name
+end
+
 function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user_cmd::Cmd)
+    # Build the docker image that corresponds to this rootfs
+    image_name = build_docker_image(config.read_only_maps["/"]; verbose=config.verbose)
+
+    if config.persist
+        # If this is a persistent run, check to see if any previous runs have happened from
+        # this executor, and if they have, we'll commit that previous run as a new image and
+        # use it instead of the "base" image.
+        image_name = commit_previous_run(exe, image_name)
+    end
+
     # Begin building `docker` args
-    cmd_string = String["docker", "run", "--rm", "--privileged", "-i"]
+    cmd_string = String["docker", "run", "--privileged", "-i", "--label", docker_image_label(exe)]
 
     # If we're doing a fully-interactive session, tell it to allocate a psuedo-TTY
     if all(isa.((config.stdin, config.stdout, config.stderr), Base.TTY))
         push!(cmd_string, "-t")
     end
-
-    # Build the docker image that corresponds to this rootfs
-    image_name = build_docker_image(config.read_only_maps["/"]; verbose=config.verbose)
 
     # Start in the right directory
     append!(cmd_string, ["-w", config.pwd])
