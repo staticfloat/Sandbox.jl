@@ -1,6 +1,6 @@
 using Random
 
-mutable struct DockerExecutor <: SandboxExecutor
+struct DockerExecutor <: SandboxExecutor
     label::String
     DockerExecutor() = new(Random.randstring(10))
 end
