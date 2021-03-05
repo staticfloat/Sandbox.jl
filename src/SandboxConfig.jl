@@ -23,6 +23,12 @@ Sandbox executors require a configuration to set up the environment properly.
 - `pwd`: Set the working directory of the command that will be run.
   - This is a path within the sandbox, and must be absolute.
 
+- `persist`: Tell the executor object to persist changes made to the rootfs.
+  - This is a boolean value, it is up to interpretation by the executor.
+  - Persistence is a property of an individual executor and changes live only as long
+    as the executor object itself.
+  - You cannot transfer persistent changes from one executor to another.
+
 - `stdin`, `stdout`, `stderr`: input/output streams for the sandboxed process.
   - Can be any kind of `IO`, `TTY`, `devnull`, etc...
 
@@ -34,6 +40,7 @@ struct SandboxConfig
     env::Dict{String,String}
     entrypoint::Union{String,Nothing}
     pwd::String
+    persist::Bool
 
     stdin::AnyRedirectable
     stdout::AnyRedirectable
@@ -45,6 +52,7 @@ struct SandboxConfig
                            env::Dict{String,String} = Dict{String,String}();
                            entrypoint::Union{String,Nothing} = nothing,
                            pwd::String = "/",
+                           persist::Bool = false,
                            stdin::AnyRedirectable = Base.devnull,
                            stdout::AnyRedirectable = Base.stdout,
                            stderr::AnyRedirectable = Base.stderr,
@@ -70,6 +78,6 @@ struct SandboxConfig
         if !haskey(read_only_maps, "/")
             throw(ArgumentError("Must provide a read-only root mapping!"))
         end
-        return new(read_only_maps, read_write_maps, env, entrypoint, pwd, stdin, stdout, stderr, verbose)
+        return new(read_only_maps, read_write_maps, env, entrypoint, pwd, persist, stdin, stdout, stderr, verbose)
     end
 end

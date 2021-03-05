@@ -3,7 +3,7 @@ using Preferences, Scratch, Artifacts, Tar, TOML, Libdl
 
 import Base: run
 export SandboxExecutor, DockerExecutor, UserNamespacesExecutor, SandboxConfig,
-       preferred_executor, executor_available, probe_executor, run
+       preferred_executor, executor_available, probe_executor, run, cleanup, with_executor
 
 # Include some utilities for things like file manipulation, uname() parsing, etc...
 include("utils.jl")
@@ -14,6 +14,8 @@ include("utils.jl")
 This represents the base type for all execution backends within this package.
 Valid concrete subtypes must implement at least the following methods:
 
+* `T()`: no-argument constructor to ready an execution engine with all defaults.
+
 * `executor_available(::DataType{T})`: Checks whether executor type `T` is available
   on this system.  For example, `UserNamespacesExecutor`s are only available on
   Linux, and even then only on certain kernels.  Availablility checks may run a
@@ -23,6 +25,16 @@ Valid concrete subtypes must implement at least the following methods:
   `Cmd` object that, when run, executes the user's desired command within the given
   sandbox.  The `config` object contains all necessary metadata such as shard
   mappings, environment variables, `stdin`/`stdout`/`stderr` redirection, etc...
+
+* `cleanup(exe::T)`: Cleans up any persistent data storage that this executor may
+  have built up over the course of its execution.
+
+Note that while you can manually construct and cleanup an executor, it is recommended
+that users instead make use of the `with_executor()` convenience function:
+
+    with_executor(UnprivilegedUserNamespacesExecutor) do exe
+        run(exe, config, ...)
+    end
 """
 abstract type SandboxExecutor; end
 
@@ -72,7 +84,7 @@ function preferred_executor(;verbose::Bool = false)
     if _preferred_executor === nothing
         _preferred_executor = select_executor(verbose)
     end
-    return _preferred_executor()
+    return _preferred_executor
 end
 
 # Helper function for warning about privileged execution trying to invoke `sudo`
@@ -89,10 +101,19 @@ warn_priviledged(::SandboxExecutor) = nothing
 function run(exe::SandboxExecutor, config::SandboxConfig, user_cmd::Cmd)
     cmd = pipeline(build_executor_command(exe, config, user_cmd); config.stdin, config.stdout, config.stderr)
     if config.verbose
-        @info("Running sandboxed command", cmd.exec)
+        @info("Running sandboxed command", user_cmd.exec)
     end
     warn_priviledged(exe)
     return success(run(cmd))
+end
+
+function with_executor(f::Function, executor_type::Type{<:SandboxExecutor} = preferred_executor())
+    exe = executor_type()
+    try
+        return f(exe)
+    finally
+        cleanup(exe)
+    end
 end
 
 function probe_executor(executor::SandboxExecutor; verbose::Bool = false, test_read_only_map=false, test_read_write_map=false)

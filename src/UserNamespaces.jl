@@ -5,18 +5,66 @@ export UserNamespacesExecutor, UnprivilegedUserNamespacesExecutor, PrivilegedUse
 
 abstract type UserNamespacesExecutor <: SandboxExecutor; end
 
+# A version of `chmod()` that hides all of its errors.
+function chmod_recursive(root::String, perms, use_sudo::Bool)
+    files = String[]
+    try
+        files = readdir(root)
+    catch e
+        if !isa(e, Base.IOError)
+            rethrow(e)
+        end
+    end
+    for f in files
+        path = joinpath(root, f)
+        try
+            if use_sudo
+                run(`$(sudo_cmd()) chmod $(string(perms, base=8)) $(path)`)
+            else
+                chmod(path, perms)
+            end
+        catch e
+            if !isa(e, Base.IOError)
+                rethrow(e)
+            end
+        end
+        if isdir(path)
+            chmod_recursive(path, perms, use_sudo)
+        end
+    end
+end
+
+
+function cleanup(exe::UserNamespacesExecutor)
+    if exe.persistence_dir !== nothing && isdir(exe.persistence_dir)
+        # Because a lot of these files are unreadable, we must `chmod +r` them before deleting
+        chmod_recursive(exe.persistence_dir, 0o777, isa(exe, PrivilegedUserNamespacesExecutor))
+        try
+            rm(exe.persistence_dir; force=true, recursive=true)
+        catch
+        end
+    end
+end
+
 # Because we can run in "privileged" or "unprivileged" mode, let's treat
 # these as two separate, but very similar, executors.
-struct UnprivilegedUserNamespacesExecutor <: UserNamespacesExecutor
+mutable struct UnprivilegedUserNamespacesExecutor <: UserNamespacesExecutor
+    persistence_dir::Union{String,Nothing}
+    UnprivilegedUserNamespacesExecutor() = new(nothing)
 end
-struct PrivilegedUserNamespacesExecutor <: UserNamespacesExecutor
+mutable struct PrivilegedUserNamespacesExecutor <: UserNamespacesExecutor
+    persistence_dir::Union{String,Nothing}
+    PrivilegedUserNamespacesExecutor() = new(nothing)
 end
 
 Base.show(io::IO, exe::UnprivilegedUserNamespacesExecutor) = write(io, "Unprivileged User Namespaces Executor")
 Base.show(io::IO, exe::PrivilegedUserNamespacesExecutor) = write(io, "Privileged User Namespaces Executor")
 
 function executor_available(::Type{T}; verbose::Bool=false) where {T <: UserNamespacesExecutor}
-    return check_kernel_version(;verbose) && probe_executor(T(); test_read_only_map=true, test_read_write_map=true, verbose)
+    return with_executor(T) do exe
+        return check_kernel_version(;verbose) &&
+               probe_executor(exe; test_read_only_map=true, test_read_write_map=true, verbose)
+    end
 end
 
 function check_kernel_version(;verbose::Bool = false)
@@ -81,6 +129,15 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
     # Add in entrypoint, if it is set
     if config.entrypoint !== nothing
         append!(cmd_string, ["--entrypoint", config.entrypoint])
+    end
+
+    # If we have a `--persist` argument, check to see if we already have a persistence_dir
+    # setup, if we do not, create a temporary directory and set it into our executor
+    if config.persist
+        if exe.persistence_dir === nothing
+            exe.persistence_dir = mktempdir()
+        end
+        append!(cmd_string, ["--persist", exe.persistence_dir])
     end
 
     # If we're running in privileged mode, we need to add `sudo` (or `su`, if `sudo` doesn't exist)

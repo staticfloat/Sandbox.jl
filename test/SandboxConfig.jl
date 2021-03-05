@@ -30,6 +30,7 @@ using Test, Artifacts
             Dict("PATH" => "/bin:/usr/bin");
             entrypoint = "/init",
             pwd = "/lib",
+            persist = true,
             stdin = Base.stdout,
             stdout = stdout,
             stderr = Base.devnull
@@ -40,6 +41,7 @@ using Test, Artifacts
         @test config.env["PATH"] == "/bin:/usr/bin"
         @test config.entrypoint == "/init"
         @test config.pwd == "/lib"
+        @test config.persist
         @test config.stdin == Base.stdout
         @test config.stdout == stdout
         @test config.stderr == Base.devnull

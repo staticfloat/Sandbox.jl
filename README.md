@@ -26,7 +26,9 @@ config = SandboxConfig(
     stdout=Base.stdout,
     stderr=Base.stderr,
 )
-run(preferred_executor(), config, `/bin/sh`)
+with_executor() do exe
+    run(exe, config, `/bin/sh`)
+end
 ```
 
 While this launches an interactive session due to hooking up `stdout`/`stdin`, one can easily capture output by setting `stdout` to an `IOBuffer`, or even a `PipeBuffer` to chain together multiple processes from different sandboxes.
