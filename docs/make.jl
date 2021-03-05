@@ -8,4 +8,5 @@ makedocs(
 deploydocs(
     repo = "github.com/staticfloat/Sandbo.jl.git",
     push_preview = true,
+    devbranch = "main",
 )
