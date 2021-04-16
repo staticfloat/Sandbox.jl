@@ -23,7 +23,7 @@ using Test, Sandbox, Scratch, Pkg
                 rw_dir = joinpath(dir, "rw")
                 mkpath(rw_dir)
                 mkpath(joinpath(rw_dir, "home"))
-                
+
                 ro_mappings = Dict(
                     # Mount in the rootfs
                     "/" => rootfs_dir,
@@ -53,16 +53,42 @@ using Test, Sandbox, Scratch, Pkg
                     pwd = "/app",
                     uid = Sandbox.getuid(),
                     gid = Sandbox.getgid(),
-                    #verbose = true,
                 )
 
+                cmd = `/bin/sh -c "julia --color=yes --project test/nested/nested_child.jl"`
                 with_executor(executor) do exe
-                    @test success(run(exe, config, `/bin/sh -c "julia --color=yes --project test/nested/nested_child.jl"`))
+                    @test success(run(exe, config, cmd))
                 end
                 @test isfile(joinpath(rw_dir, "single_nested.txt"))
                 @test isfile(joinpath(rw_dir, "double_nested.txt"))
                 @test String(read(joinpath(rw_dir, "single_nested.txt"))) == "aperture\n"
                 @test String(read(joinpath(rw_dir, "double_nested.txt"))) == "science\n"
+
+                if executor <: DockerExecutor
+                    stderr = IOBuffer()
+                    config_with_stderr = SandboxConfig(
+                        ro_mappings,
+                        # Mount a temporary directory in as writable
+                        Dict("/tmp/readwrite" => rw_dir),
+                        # Add the path to `julia` onto the path
+                        Dict(
+                            "PATH" => "/usr/local/julia/bin:/usr/local/bin:/usr/bin:/bin",
+                            "HOME" => "/tmp/readwrite/home",
+                        );
+                        pwd = "/app",
+                        uid = Sandbox.getuid(),
+                        gid = Sandbox.getgid(),
+                        stderr = stderr,
+                    )
+
+                    for privileges in [:no_new_privileges, :unprivileged]
+                        with_executor(executor; privileges) do exe
+                            @test !success(exe, config_with_stderr, cmd)
+                            # Ensure that we get the nested sandbox unable to run any nested sandboxing
+                            @test occursin("Could not find any available executors!", String(take!(stderr)))
+                        end
+                    end
+                end
             end
         end
     end
