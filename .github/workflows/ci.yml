@@ -19,6 +19,9 @@ jobs:
           - "nightly"
         julia-arch:
           - "x64"
+        build-sandbox:
+          - "false"
+          - "true"
 
     steps:
       - uses: actions/checkout@v2
@@ -37,7 +40,9 @@ jobs:
             ${{ runner.os }}-test-${{ env.cache-name }}-
             ${{ runner.os }}-test-
             ${{ runner.os }}-
-      - uses: julia-actions/julia-buildpkg@v1
+      - name: Build Sandbox
+        run: julia --project deps/build_local_sandbox.jl
+        if: ${{ matrix.build-sandbox == 'true' }}
       - uses: julia-actions/julia-runtest@v1
 
   Documentation:
