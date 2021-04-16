@@ -1,5 +1,14 @@
 # Sandbox.jl
 
+[![Stable][docs-stable-img]][docs-stable-url]
+[![Dev][docs-dev-img]][docs-dev-url]
+
+
+[docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
+[docs-stable-url]: https://staticfloat.github.io/Sandbox.jl/stable
+[docs-dev-img]: https://img.shields.io/badge/docs-dev-blue.svg
+[docs-dev-url]: https://staticfloat.github.io/Sandbox.jl/dev
+
 > The cultured host's toolkit for ill-mannered Linux guests.
 
 This package provides basic containerization tools for running Linux guests on a variety of platforms.
