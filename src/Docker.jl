@@ -1,8 +1,8 @@
 using Random, Tar
 
-struct DockerExecutor <: SandboxExecutor
-    label::String
-    DockerExecutor() = new(Random.randstring(10))
+Base.@kwdef struct DockerExecutor <: SandboxExecutor
+    label::String = Random.randstring(10)
+    privileges::Symbol = :privileged
 end
 
 function cleanup(exe::DockerExecutor)
@@ -128,7 +128,21 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
     end
 
     # Begin building `docker` args
-    cmd_string = String["docker", "run", "--privileged", "-i", "--label", docker_image_label(exe)]
+    if exe.privileges === :privileged  # this is the default
+        # pros: allows you to do nested execution. e.g. the ability to run `Sandbox` inside `Sandbox`
+        # cons: may allow processes inside the Docker container to access secure environment variables of processes outside the container
+        privilege_args = String["--privileged"]
+    elseif exe.privileges === :no_new_privileges
+        # pros: may prevent privilege escalation attempts
+        # cons: you won't be able to do nested execution
+        privilege_args = String["--security-opt", "no-new-privileges"]
+    elseif exe.privileges === :unprivileged
+        # cons: you won't be able to do nested execution; privilege escalation may still work
+        privilege_args = String[]
+    else
+        throw(ArgumentError("invalid value for exe.privileges: $(exe.privileges)"))
+    end
+    cmd_string = String["docker", "run", privilege_args..., "-i", "--label", docker_image_label(exe)]
 
     # If we're doing a fully-interactive session, tell it to allocate a psuedo-TTY
     if all(isa.((config.stdin, config.stdout, config.stderr), Base.TTY))
