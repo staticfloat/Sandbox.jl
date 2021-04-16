@@ -41,7 +41,9 @@ jobs:
             ${{ runner.os }}-test-
             ${{ runner.os }}-
       - name: Build Sandbox
-        run: julia --project deps/build_local_sandbox.jl
+        run: |
+          julia --project -e 'using Pkg; Pkg.instantiate()'
+          julia --project deps/build_local_sandbox.jl
         if: ${{ matrix.build-sandbox != '' }}
       - uses: julia-actions/julia-runtest@v1
 
