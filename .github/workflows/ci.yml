@@ -51,14 +51,14 @@ jobs:
             @info("sandbox", UserNSSandbox_jll.sandbox_path)
             @test any(startswith(UserNSSandbox_jll.sandbox_path, d) for d in Artifacts.artifacts_dirs())
           '
-        if: ${{ matrix.build-sandbox != '' }}
+        if: ${{ matrix.build-sandbox == '' }}
       - name: Ensure sandbox is locally built
         run: |
           julia --project -e 'using Test, UserNSSandbox_jll, Scratch;
             @info("sandbox", UserNSSandbox_jll.sandbox_path)
             @test startswith(UserNSSandbox_jll.sandbox_path, Scratch.scratch_dir())
           '
-        if: ${{ matrix.build-sandbox == '' }}
+        if: ${{ matrix.build-sandbox != '' }}
       - uses: julia-actions/julia-runtest@v1
 
   Documentation:
