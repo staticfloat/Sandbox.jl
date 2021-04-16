@@ -1,8 +1,8 @@
 using Random
 
-struct DockerExecutor <: SandboxExecutor
-    label::String
-    DockerExecutor() = new(Random.randstring(10))
+Base.@kwdef struct DockerExecutor <: SandboxExecutor
+    label::String = Random.randstring(10)
+    image::Union{String, Nothing} = nothing
 end
 
 function cleanup(exe::DockerExecutor)
@@ -57,11 +57,18 @@ function save_timestamp(image_name::String, timestamp::Float64)
     end
 end
 
-docker_image_name(root_path::String) = "sandbox_rootfs:$(string(Base._crc32c(root_path), base=16))"
+function docker_image_name(exe::DockerExecutor, root_path::String)::String
+    if exe.image === nothing
+        return "sandbox_rootfs:$(string(Base._crc32c(root_path), base=16))"
+    else
+        return exe.image
+    end
+end
+
 docker_image_label(exe::DockerExecutor) = string("org.julialang.sandbox.jl=", exe.label)
-function should_build_docker_image(root_path::String)
+function should_build_docker_image(exe::DockerExecutor, root_path::String)
     # If the image doesn't exist at all, always return true
-    image_name = docker_image_name(root_path)
+    image_name = docker_image_name(exe, root_path)
     if !success(`docker image inspect $(image_name)`)
         return true
     end
@@ -73,7 +80,7 @@ function should_build_docker_image(root_path::String)
 end
 
 """
-    build_docker_image(root_path::String)
+    build_docker_image(exe::DockerExecutor, root_path::String)
 
 Docker doesn't like volume mounts within volume mounts, like we do with `sandbox`.
 So we do things "the docker way", where we construct a rootfs docker image, then mount
@@ -81,9 +88,12 @@ things on top of that, with no recursive mounting.  We cut down on unnecessary w
 somewhat by quick-scanning the directory for changes and only rebuilding if changes
 are detected.
 """
-function build_docker_image(root_path::String; verbose::Bool = false)
-    image_name = docker_image_name(root_path)
-    if should_build_docker_image(root_path)
+function build_docker_image(exe::DockerExecutor, root_path::String; verbose::Bool = false)
+    if exe.image !== nothing
+        throw(ArgumentError("If you provide exe.image, you must not provide a root mapping!"))
+    end
+    image_name = docker_image_name(exe, root_path)
+    if should_build_docker_image(exe, root_path)
         max_ctime = max_directory_ctime(root_path)
         if verbose
             @info("Building docker image $(image_name) with max timestamp $(max_ctime)")
@@ -101,6 +111,13 @@ function build_docker_image(root_path::String; verbose::Bool = false)
     return image_name
 end
 
+function build_docker_image(exe::DockerExecutor, ::Nothing; verbose::Bool = false)::String
+    if exe.image === nothing
+        throw(ArgumentError("Must provide a read-only root mapping!"))
+    end
+    return exe.image
+end
+
 function commit_previous_run(exe::DockerExecutor, image_name::String)
     ids = split(readchomp(`docker ps -a --filter label=$(docker_image_label(exe)) --format "{{.ID}}"`))
     if isempty(ids)
@@ -115,7 +132,7 @@ end
 
 function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user_cmd::Cmd)
     # Build the docker image that corresponds to this rootfs
-    image_name = build_docker_image(config.read_only_maps["/"]; verbose=config.verbose)
+    image_name = build_docker_image(exe, get(config.read_only_maps, "/", nothing); verbose=config.verbose)
 
     if config.persist
         # If this is a persistent run, check to see if any previous runs have happened from

@@ -5,7 +5,7 @@ using Test, Artifacts
 
     @testset "minimal config" begin
         config = SandboxConfig(Dict("/" => rootfs_dir))
-        
+
         @test haskey(config.read_only_maps, "/")
         @test config.read_only_maps["/"] == rootfs_dir
         @test isempty(config.read_write_maps)
@@ -48,9 +48,6 @@ using Test, Artifacts
     end
 
     @testset "errors" begin
-        # No root dir error
-        @test_throws ArgumentError SandboxConfig(Dict("/rootfs" => rootfs_dir))
-
         # relative dirs error
         @test_throws ArgumentError SandboxConfig(Dict("/" => rootfs_dir, "rootfs" => rootfs_dir))
         @test_throws ArgumentError SandboxConfig(Dict("/" => rootfs_dir, "/rootfs" => basename(rootfs_dir)))

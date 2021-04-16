@@ -108,6 +108,9 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
     end
 
     # Extract the rootfs, as it's treated specially
+    if !haskey(config.read_only_maps, "/")
+        throw(ArgumentError("Must provide a read-only root mapping!"))
+    end
     append!(cmd_string, ["--rootfs", config.read_only_maps["/"]])
 
     # Add our `--cd` command

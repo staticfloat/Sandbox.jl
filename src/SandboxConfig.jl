@@ -74,10 +74,6 @@ struct SandboxConfig
             end
         end
 
-        # Ensure that read_only_maps contains a mapping for the root in the guest:
-        if !haskey(read_only_maps, "/")
-            throw(ArgumentError("Must provide a read-only root mapping!"))
-        end
         return new(read_only_maps, read_write_maps, env, entrypoint, pwd, persist, stdin, stdout, stderr, verbose)
     end
 end
