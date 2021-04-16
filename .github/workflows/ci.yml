@@ -9,7 +9,7 @@ on:
 
 jobs:
   test:
-    name: Julia ${{ matrix.julia-version }} - ${{ matrix.julia-arch }}
+    name: Julia ${{ matrix.julia-version }} - ${{ matrix.julia-arch }} - ${{ matrix.build-sandbox }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -20,8 +20,8 @@ jobs:
         julia-arch:
           - "x64"
         build-sandbox:
-          - "false"
-          - "true"
+          - ""
+          - "build local sandbox"
 
     steps:
       - uses: actions/checkout@v2
@@ -42,7 +42,7 @@ jobs:
             ${{ runner.os }}-
       - name: Build Sandbox
         run: julia --project deps/build_local_sandbox.jl
-        if: ${{ matrix.build-sandbox == 'true' }}
+        if: ${{ matrix.build-sandbox != '' }}
       - uses: julia-actions/julia-runtest@v1
 
   Documentation:
