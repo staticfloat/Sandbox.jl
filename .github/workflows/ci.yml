@@ -9,7 +9,7 @@ on:
 
 jobs:
   test:
-    name: Julia ${{ matrix.julia-version }} - ${{ matrix.julia-arch }}
+    name: Julia ${{ matrix.julia-version }} - ${{ matrix.julia-arch }} - ${{ matrix.build-sandbox }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -19,6 +19,9 @@ jobs:
           - "nightly"
         julia-arch:
           - "x64"
+        build-sandbox:
+          - ""
+          - "build local sandbox"
 
     steps:
       - uses: actions/checkout@v2
@@ -37,7 +40,25 @@ jobs:
             ${{ runner.os }}-test-${{ env.cache-name }}-
             ${{ runner.os }}-test-
             ${{ runner.os }}-
-      - uses: julia-actions/julia-buildpkg@v1
+      - name: Manually instantiate
+        run: julia --project -e 'using Pkg; Pkg.instantiate()'
+      - name: Build Sandbox
+        run: julia --project deps/build_local_sandbox.jl
+        if: ${{ matrix.build-sandbox != '' }}
+      - name: Ensure sandbox is from artifact
+        run: |
+          julia --project -e 'using Test, UserNSSandbox_jll, Artifacts;
+            @info("sandbox", UserNSSandbox_jll.sandbox_path)
+            @test any(startswith(UserNSSandbox_jll.sandbox_path, d) for d in Artifacts.artifacts_dirs())
+          '
+        if: ${{ matrix.build-sandbox == '' }}
+      - name: Ensure sandbox is locally built
+        run: |
+          julia --project -e 'using Test, UserNSSandbox_jll, Scratch;
+            @info("sandbox", UserNSSandbox_jll.sandbox_path)
+            @test startswith(UserNSSandbox_jll.sandbox_path, Scratch.scratch_dir())
+          '
+        if: ${{ matrix.build-sandbox != '' }}
       - uses: julia-actions/julia-runtest@v1
 
   Documentation:
