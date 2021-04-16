@@ -78,13 +78,16 @@ function select_executor(verbose::Bool)
 end
 
 _preferred_executor = nothing
+const _preferred_executor_lock = ReentrantLock()
 function preferred_executor(;verbose::Bool = false)
-    # If we've already asked this question, return the old answer
-    global _preferred_executor
-    if _preferred_executor === nothing
-        _preferred_executor = select_executor(verbose)
+    lock(_preferred_executor_lock) do
+        # If we've already asked this question, return the old answer
+        global _preferred_executor
+        if _preferred_executor === nothing
+            _preferred_executor = select_executor(verbose)
+        end
+        return _preferred_executor
     end
-    return _preferred_executor
 end
 
 # Helper function for warning about privileged execution trying to invoke `sudo`
@@ -98,13 +101,13 @@ function warn_priviledged(::PrivilegedUserNamespacesExecutor)
 end
 warn_priviledged(::SandboxExecutor) = nothing
 
-function run(exe::SandboxExecutor, config::SandboxConfig, user_cmd::Cmd)
+function run(exe::SandboxExecutor, config::SandboxConfig, user_cmd::Cmd; kwargs...)
     cmd = pipeline(build_executor_command(exe, config, user_cmd); config.stdin, config.stdout, config.stderr)
     if config.verbose
         @info("Running sandboxed command", user_cmd.exec)
     end
     warn_priviledged(exe)
-    return success(run(cmd))
+    return run(cmd; kwargs...)
 end
 
 function with_executor(f::Function, executor_type::Type{<:SandboxExecutor} = preferred_executor())
@@ -177,7 +180,7 @@ function probe_executor(executor::SandboxExecutor; verbose::Bool = false, test_r
 
         # Command should execute successfully
         user_cmd = ignorestatus(user_cmd)
-        if !run(executor, config, user_cmd)
+        if !success(run(executor, config, user_cmd))
             if verbose
                 cmd_stdout = String(take!(cmd_stdout))
                 cmd_stderr = String(take!(cmd_stderr))
