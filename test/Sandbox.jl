@@ -24,7 +24,7 @@ for executor in all_executors
                 stderr,
             )
             with_executor(executor) do exe
-                @test run(exe, config, `/bin/sh -c "echo stdout; echo stderr >&2"`)
+                @test success(run(exe, config, `/bin/sh -c "echo stdout; echo stderr >&2"`))
                 @test String(take!(stdout)) == "stdout\n";
                 @test String(take!(stderr)) == "stderr\n";
             end
@@ -34,7 +34,7 @@ for executor in all_executors
             config = SandboxConfig(Dict("/" => rootfs_dir))
             with_executor(executor) do exe
                 @test_throws ProcessFailedException run(exe, config, `/bin/sh -c "false"`)
-                @test !run(exe, config, ignorestatus(`/bin/sh -c "false"`))
+                @test !success(run(exe, config, ignorestatus(`/bin/sh -c "false"`)))
             end
         end
 
@@ -55,14 +55,14 @@ for executor in all_executors
             )
             user_cmd = `/bin/sh -c "echo \$PATH \$LD_LIBRARY_PATH \$DYLD_LIBRARY_PATH \$SHELL"`
             with_executor(executor) do exe
-                @test run(exe, config, user_cmd)
+                @test success(run(exe, config, user_cmd))
                 @test String(take!(stdout)) == "for science you monster\n";
             end
 
             # Test that setting some environment onto `user_cmd` can override the `config` env:
             user_cmd = setenv(user_cmd, "DYLD_LIBRARY_PATH" => "my", "SHELL" => "friend")
             with_executor(executor) do exe
-                @test run(exe, config, user_cmd)
+                @test success(run(exe, config, user_cmd))
                 @test String(take!(stdout)) == "for science my friend\n";
             end
         end
@@ -78,7 +78,7 @@ for executor in all_executors
                     stdout,
                 )
                 with_executor(executor) do exe
-                    @test run(exe, config, `/bin/sh -c "cat /glados/note.txt"`)
+                    @test success(run(exe, config, `/bin/sh -c "cat /glados/note.txt"`))
                     @test String(take!(stdout)) == "great success";
                 end
             end
@@ -91,7 +91,7 @@ for executor in all_executors
                     Dict("/" => rootfs_dir),
                     Dict("/glados" => dir);
                 )
-                @test run(executor(), config, `/bin/sh -c "echo aperture > /glados/science.txt"`)
+                @test success(run(executor(), config, `/bin/sh -c "echo aperture > /glados/science.txt"`))
                 @test isfile(joinpath(dir, "science.txt"))
                 @test String(read(joinpath(dir, "science.txt"))) == "aperture\n"
             end
@@ -109,8 +109,8 @@ for executor in all_executors
                 stdin = pipe,
                 stdout = stdout,
             )
-            @test run(executor(), first_config, `/bin/sh -c "echo 'ignore me'; echo 'pick this up foo'; echo 'ignore me as well'"`)
-            @test run(executor(), second_config, `/bin/sh -c "grep foo"`)
+            @test success(run(executor(), first_config, `/bin/sh -c "echo 'ignore me'; echo 'pick this up foo'; echo 'ignore me as well'"`))
+            @test success(run(executor(), second_config, `/bin/sh -c "grep foo"`))
             @test String(take!(stdout)) == "pick this up foo\n";
         end
 
@@ -133,22 +133,22 @@ for executor in all_executors
                 # the rootfs image, for userns this is all mounted within an overlay backed by a tmpfs,
                 # because we have `persist` set to `false`.
                 with_executor(executor) do exe
-                    @test run(exe, config, `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`)
+                    @test success(run(exe, config, `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`))
                     @test String(take!(stdout)) == "aperture\n";
                     @test isempty(take!(stderr))
-                    @test run(exe, config, `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`)
+                    @test success(run(exe, config, `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`))
                     @test String(take!(stdout)) == "aperture\n";
                     @test isempty(take!(stderr))
 
                     # An actual read-only mount will not allow writing, because it's truly read-only
-                    @test !run(exe, config, ignorestatus(`/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`))
+                    @test !success(run(exe, config, ignorestatus(`/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)))
                     @test occursin("Read-only file system", String(take!(stderr)))
 
                     # A read-write mount, on the other hand, will be permanent
-                    @test run(exe, config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`)
+                    @test success(run(exe, config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`))
                     @test String(take!(stdout)) == "aperture\n";
                     @test isempty(take!(stderr))
-                    @test run(exe, config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`)
+                    @test success(run(exe, config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`))
                     @test String(take!(stdout)) == "aperture\naperture\n";
                     @test isempty(take!(stderr))
                 end
@@ -189,10 +189,10 @@ for executor in all_executors
 
                 # Modifying the read-only files now works, and is temporary
                 with_executor(executor) do exe
-                    @test run(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
+                    @test success(run(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`))
                     @test String(take!(stdout)) == "entrypoint activated\naperture\n";
                     @test isempty(take!(stderr))
-                    @test run(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
+                    @test success(run(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`))
                     @test String(take!(stdout)) == "entrypoint activated\naperture\n";
                     @test isempty(take!(stderr))
                 end
@@ -213,16 +213,16 @@ for executor in all_executors
                 # Modifying the read-only files is persistent within a single executor
                 cmd = `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`
                 with_executor(executor) do exe
-                    @test run(exe, config, cmd)
+                    @test success(run(exe, config, cmd))
                     @test String(take!(stdout)) == "aperture\n";
                     @test isempty(take!(stderr))
-                    @test run(exe, config, cmd)
+                    @test success(run(exe, config, cmd))
                     @test String(take!(stdout)) == "aperture\naperture\n";
                     @test isempty(take!(stderr))
                 end
 
                 with_executor(executor) do exe
-                    @test run(exe, config, cmd)
+                    @test success(run(exe, config, cmd))
                     @test String(take!(stdout)) == "aperture\n";
                     @test isempty(take!(stderr))
                 end
@@ -240,7 +240,7 @@ end
         stderr,
     )
     with_executor() do exe
-        @test run(exe, config, `/bin/sh -c "echo stdout; echo stderr >&2"`)
+        @test success(run(exe, config, `/bin/sh -c "echo stdout; echo stderr >&2"`))
         @test String(take!(stdout)) == "stdout\n";
         @test String(take!(stderr)) == "stderr\n";
     end

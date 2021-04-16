@@ -104,7 +104,7 @@ function run(exe::SandboxExecutor, config::SandboxConfig, user_cmd::Cmd; kwargs.
         @info("Running sandboxed command", user_cmd.exec)
     end
     warn_priviledged(exe)
-    return success(run(cmd; kwargs...))
+    return run(cmd; kwargs...)
 end
 
 function with_executor(f::Function, executor_type::Type{<:SandboxExecutor} = preferred_executor())
@@ -177,7 +177,7 @@ function probe_executor(executor::SandboxExecutor; verbose::Bool = false, test_r
 
         # Command should execute successfully
         user_cmd = ignorestatus(user_cmd)
-        if !run(executor, config, user_cmd)
+        if !success(run(executor, config, user_cmd))
             if verbose
                 cmd_stdout = String(take!(cmd_stdout))
                 cmd_stderr = String(take!(cmd_stderr))
