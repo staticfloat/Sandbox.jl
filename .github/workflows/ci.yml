@@ -45,6 +45,12 @@ jobs:
           julia --project -e 'using Pkg; Pkg.instantiate()'
           julia --project deps/build_local_sandbox.jl
         if: ${{ matrix.build-sandbox != '' }}
+      - name: Ensure sandbox is from artifact
+        run: julia --project -e 'using Test, UserNSSandbox_jll, Artifacts; @test any(startswith(UserNSSandbox_jll.sandbox_path, d) for d in Artifacts.artifacts_dirs())'
+        if: ${{ matrix.build-sandbox != '' }}
+      - name: Ensure sandbox is locally built
+        run: julia --project -e 'using Test, UserNSSandbox_jll, Scratch; @test startswith(UserNSSandbox_jll.sandbox_path, Scratch.scratch_dir())'
+        if: ${{ matrix.build-sandbox == '' }}
       - uses: julia-actions/julia-runtest@v1
 
   Documentation:
