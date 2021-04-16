@@ -98,13 +98,13 @@ function warn_priviledged(::PrivilegedUserNamespacesExecutor)
 end
 warn_priviledged(::SandboxExecutor) = nothing
 
-function run(exe::SandboxExecutor, config::SandboxConfig, user_cmd::Cmd)
+function run(exe::SandboxExecutor, config::SandboxConfig, user_cmd::Cmd; kwargs...)
     cmd = pipeline(build_executor_command(exe, config, user_cmd); config.stdin, config.stdout, config.stderr)
     if config.verbose
         @info("Running sandboxed command", user_cmd.exec)
     end
     warn_priviledged(exe)
-    return success(run(cmd))
+    return success(run(cmd; kwargs...))
 end
 
 function with_executor(f::Function, executor_type::Type{<:SandboxExecutor} = preferred_executor())
