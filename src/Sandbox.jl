@@ -78,13 +78,16 @@ function select_executor(verbose::Bool)
 end
 
 _preferred_executor = nothing
+const _preferred_executor_lock = ReentrantLock()
 function preferred_executor(;verbose::Bool = false)
-    # If we've already asked this question, return the old answer
-    global _preferred_executor
-    if _preferred_executor === nothing
-        _preferred_executor = select_executor(verbose)
+    lock(_preferred_executor_lock) do
+        # If we've already asked this question, return the old answer
+        global _preferred_executor
+        if _preferred_executor === nothing
+            _preferred_executor = select_executor(verbose)
+        end
+        return _preferred_executor
     end
-    return _preferred_executor
 end
 
 # Helper function for warning about privileged execution trying to invoke `sudo`
