@@ -114,8 +114,12 @@ for f in (:run, :success)
     end
 end
 
-function with_executor(f::Function, executor_type::Type{<:SandboxExecutor} = preferred_executor())
-    exe = executor_type()
+"""
+    with_executor(f::Function, ::Type{<:SandboxExecutor} = preferred_executor(); kwargs...)
+"""
+function with_executor(f::F, ::Type{T} = preferred_executor();
+                       kwargs...) where {F <: Function, T <: SandboxExecutor}
+    exe = T(; kwargs...)
     try
         return f(exe)
     finally
