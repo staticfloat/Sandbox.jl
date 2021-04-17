@@ -1,7 +1,7 @@
 module Sandbox
 using Preferences, Scratch, Artifacts, TOML, Libdl
 
-import Base: run
+import Base: run, success
 export SandboxExecutor, DockerExecutor, UserNamespacesExecutor, SandboxConfig,
        preferred_executor, executor_available, probe_executor, run, cleanup, with_executor
 
@@ -101,13 +101,17 @@ function warn_priviledged(::PrivilegedUserNamespacesExecutor)
 end
 warn_priviledged(::SandboxExecutor) = nothing
 
-function run(exe::SandboxExecutor, config::SandboxConfig, user_cmd::Cmd; kwargs...)
-    cmd = pipeline(build_executor_command(exe, config, user_cmd); config.stdin, config.stdout, config.stderr)
-    if config.verbose
-        @info("Running sandboxed command", user_cmd.exec)
+for f in (:run, :success)
+    @eval begin
+        function $f(exe::SandboxExecutor, config::SandboxConfig, user_cmd::Cmd; kwargs...)
+            cmd = pipeline(build_executor_command(exe, config, user_cmd); config.stdin, config.stdout, config.stderr)
+            if config.verbose
+                @info("Running sandboxed command", user_cmd.exec)
+            end
+            warn_priviledged(exe)
+            return $f(cmd; kwargs...)
+        end
     end
-    warn_priviledged(exe)
-    return run(cmd; kwargs...)
 end
 
 function with_executor(f::Function, executor_type::Type{<:SandboxExecutor} = preferred_executor())
