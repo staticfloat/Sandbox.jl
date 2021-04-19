@@ -59,6 +59,9 @@ jobs:
             @test startswith(UserNSSandbox_jll.sandbox_path, Scratch.scratch_dir())
           '
         if: ${{ matrix.build-sandbox != '' }}
+      - name: Set preferences for test project
+        run: sed 's/\[\(.*\)\]/[preferences.\1]/' LocalPreferences.toml >> test/Project.toml
+        if: ${{ matrix.build-sandbox != '' }}
       - uses: julia-actions/julia-runtest@v1
 
   Documentation:
