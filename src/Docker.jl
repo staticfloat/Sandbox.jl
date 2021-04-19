@@ -91,7 +91,10 @@ function build_docker_image(root_path::String; verbose::Bool = false)
 
         # Build the docker image
         open(`docker import - $(image_name)`, "w", verbose ? stdout : devnull) do io
-            Tar.create(root_path, io)
+            # we need to record permisions, so can't use Tar.jl
+            cd(root_path) do
+                run(pipeline(`tar -c .`, stdout=io))
+            end
         end
 
         # Record that we built it
