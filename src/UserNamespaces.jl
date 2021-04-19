@@ -140,6 +140,14 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
         append!(cmd_string, ["--persist", exe.persistence_dir])
     end
 
+    # Set the user and group, if requested
+    if config.uid !== nothing
+        append!(cmd_string, ["--uid", string(config.uid)])
+    end
+    if config.gid !== nothing
+        append!(cmd_string, ["--gid", string(config.gid)])
+    end
+
     # If we're running in privileged mode, we need to add `sudo` (or `su`, if `sudo` doesn't exist)
     if isa(exe, PrivilegedUserNamespacesExecutor)
         # Next, prefer `sudo`, but allow fallback to `su`. Also, force-set our

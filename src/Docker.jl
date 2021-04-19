@@ -163,6 +163,18 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
         append!(cmd_string, ["--entrypoint", config.entrypoint])
     end
 
+    # Set the user and group, if requested
+    if config.uid !== nothing || config.gid !== nothing
+        user_str = ""
+        if config.uid !== nothing
+            user_str *= "$(config.uid)"
+        end
+        if config.gid !== nothing
+            user_str *= ":$(config.gid)"
+        end
+        append!(cmd_string, ["--user", user_str])
+    end
+
     # Finally, append the docker image name user-requested command string
     push!(cmd_string, image_name)
     append!(cmd_string, user_cmd.exec)
