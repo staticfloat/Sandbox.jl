@@ -7,7 +7,7 @@ if !success(`sudo -k -n true`)
     all_executors = filter(exe -> exe != PrivilegedUserNamespacesExecutor, all_executors)
 end
 
-rootfs_dir = artifact"AlpineRootfs"
+rootfs_dir = Sandbox.alpine_rootfs()
 for executor in all_executors
     if !executor_available(executor)
         @error("Skipping $(executor) tests, as it does not seem to be available")

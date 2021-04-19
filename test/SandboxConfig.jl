@@ -1,11 +1,11 @@
 using Test, Artifacts
 
 @testset "SandboxConfig" begin
-    rootfs_dir = artifact"AlpineRootfs"
+    rootfs_dir = Sandbox.alpine_rootfs()
 
     @testset "minimal config" begin
         config = SandboxConfig(Dict("/" => rootfs_dir))
-        
+
         @test haskey(config.read_only_maps, "/")
         @test config.read_only_maps["/"] == rootfs_dir
         @test isempty(config.read_write_maps)
