@@ -27,7 +27,7 @@ within user namespaces.  Arch Linux is a great example of this.
 
 To test this executable, compile it with:
 
-    gcc -O2 -static -static-libgcc -std=c99 -o /tmp/sandbox ./sandbox.c
+    gcc -O2 -static -static-libgcc -std=c99 -o /tmp/sandbox ./userns_sandbox.c
 
 Then run it, mounting in a rootfs with a workspace and no other read-only maps:
 
@@ -176,18 +176,20 @@ static void mkpath(const char * dir) {
  * patched kernel should be considered essential for any security-sensitive
  * work done on top of this infrastructure).
  */
-static void configure_user_namespace(uid_t uid, gid_t gid, pid_t pid) {
+static void configure_user_namespace(pid_t pid, uid_t src_uid, gid_t src_gid,
+                                     uid_t dst_uid, gid_t dst_gid) {
   int nbytes = 0;
 
   if (verbose) {
-    fprintf(stderr, "--> Mapping %d:%d to root:root within container namespace\n", uid, gid);
+    fprintf(stderr, "--> Mapping %d:%d to %d:%d within container namespace\n",
+            src_uid, src_gid, dst_uid, dst_gid);
   }
 
   // Setup uid map
   int uidmap_fd = open_proc_file(pid, "uid_map", O_WRONLY);
   check(uidmap_fd != -1);
   char uidmap[100];
-  nbytes = snprintf(uidmap, sizeof(uidmap), "0\t%d\t1\n", uid);
+  nbytes = snprintf(uidmap, sizeof(uidmap), "%d\t%d\t1\n", dst_uid, src_uid);
   check(nbytes > 0 && nbytes <= sizeof(uidmap));
   check(write(uidmap_fd, uidmap, nbytes) == nbytes);
   close(uidmap_fd);
@@ -202,7 +204,7 @@ static void configure_user_namespace(uid_t uid, gid_t gid, pid_t pid) {
   int gidmap_fd = open_proc_file(pid, "gid_map", O_WRONLY);
   check(gidmap_fd != -1);
   char gidmap[100];
-  nbytes = snprintf(gidmap, sizeof(gidmap), "0\t%d\t1", gid);
+  nbytes = snprintf(gidmap, sizeof(gidmap), "%d\t%d\t1", dst_gid, src_gid);
   check(nbytes > 0 && nbytes <= sizeof(gidmap));
   check(write(gidmap_fd, gidmap, nbytes) == nbytes);
 }
@@ -356,7 +358,7 @@ static void mount_maps(const char * dest, struct map_list * workspaces, uint8_t 
         fprintf(stderr, "--> workspacing %s to %s\n", current_entry->outside_path, path);
       }
     }
-    
+
     // Ensure there is a directory ready to receive the mount, then bind-mount it.
     mkpath(path);
     bind_mount(current_entry->outside_path, path, read_only);
@@ -564,6 +566,9 @@ int main(int sandbox_argc, char **sandbox_argv) {
   unsetenv("SUDO_UID");
   unsetenv("SUDO_GID");
 
+  uid_t dst_uid = 0;
+  gid_t dst_gid = 0;
+
   // Parse out options
   while(1) {
     static struct option long_options[] = {
@@ -575,6 +580,8 @@ int main(int sandbox_argc, char **sandbox_argv) {
       {"persist",    required_argument, NULL, 'p'},
       {"cd",         required_argument, NULL, 'c'},
       {"map",        required_argument, NULL, 'm'},
+      {"uid",        required_argument, NULL, 'u'},
+      {"gid",        required_argument, NULL, 'g'},
       {0, 0, 0, 0}
     };
 
@@ -654,6 +661,18 @@ int main(int sandbox_argc, char **sandbox_argv) {
         persist_dir = strdup(optarg);
         if (verbose) {
           fprintf(stderr, "Parsed --persist as \"%s\"\n", persist_dir);
+        }
+        break;
+      case 'u':
+        dst_uid = atoi(optarg);
+        if (verbose) {
+          fprintf(stderr, "Parsed --uid as \"%d\"\n", dst_uid);
+        }
+        break;
+      case 'g':
+        dst_gid = atoi(optarg);
+        if (verbose) {
+          fprintf(stderr, "Parsed --gid as \"%d\"\n", dst_gid);
         }
         break;
       case 'e':
@@ -745,17 +764,17 @@ int main(int sandbox_argc, char **sandbox_argv) {
     if (execution_mode == PRIVILEGED_CONTAINER_MODE) {
       // If we are in privileged container mode, let's go ahead and drop back
       // to the original calling user's UID and GID, which has been mapped to
-      // zero within this container.
-      check(0 == setuid(0));
-      check(0 == setgid(0));
+      // the requested uid/gids (defaulting to zero) within this container.
+      check(0 == setuid(dst_uid));
+      check(0 == setgid(dst_gid));
 
       // The /proc mountpoint previously mounted is in the wrong PID namespace;
       // mount a new procfs over it to to get better values:
-      mount_procfs(sandbox_root, 0, 0);
+      mount_procfs(sandbox_root, dst_uid, dst_gid);
     } else if (execution_mode == UNPRIVILEGED_CONTAINER_MODE) {
       // If we're in unprivileged container mode, mount the world now that we
       // have supreme cosmic power.
-      mount_the_world(sandbox_root, maps, workspaces, 0, 0, persist_dir);
+      mount_the_world(sandbox_root, maps, workspaces, dst_uid, dst_gid, persist_dir);
     }
 
     // Finally, we begin invocation of the target program.
@@ -778,7 +797,7 @@ int main(int sandbox_argc, char **sandbox_argv) {
   }
 
   // Configure user namespace for the child PID.
-  configure_user_namespace(uid, gid, pid);
+  configure_user_namespace(pid, uid, gid, dst_uid, dst_gid);
 
   // Signal to the child that it can now continue running.
   close(child_block[1]);
