@@ -1,4 +1,4 @@
-using Test, Sandbox
+using Test, Sandbox, Artifacts
 
 all_executors = Sandbox.all_executors
 
