@@ -1,5 +1,5 @@
 module Sandbox
-using Preferences, Scratch, Artifacts, Tar, TOML, Libdl
+using Preferences, Scratch, Artifacts, TOML, Libdl
 
 import Base: run
 export SandboxExecutor, DockerExecutor, UserNamespacesExecutor, SandboxConfig,
