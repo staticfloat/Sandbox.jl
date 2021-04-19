@@ -228,6 +228,23 @@ for executor in all_executors
                 end
             end
         end
+
+        @testset "explicit user and group" begin
+            for (uid,gid) in [(nothing,nothing), (999,nothing), (nothing,999), (999,999)]
+                stdout = IOBuffer()
+
+                config = SandboxConfig(
+                    Dict("/" => rootfs_dir);
+                    stdout, uid, gid
+                )
+                with_executor(executor) do exe
+                    @test success(run(exe, config, `/usr/bin/id`))
+                    str = String(take!(stdout))
+                    @test contains(str, "uid=$(something(uid,0))")
+                    @test contains(str, "gid=$(something(gid,0))")
+                end
+            end
+        end
     end
 end
 
