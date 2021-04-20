@@ -30,6 +30,7 @@ Sandbox executors require a configuration to set up the environment properly.
   - You cannot transfer persistent changes from one executor to another.
 
 - `uid` and `gid`: Numeric user and group identifiers to spawn the sandboxed process as.
+  - By default, these are both `0`, signifying `root` inside the sandbox.
 
 - `stdin`, `stdout`, `stderr`: input/output streams for the sandboxed process.
   - Can be any kind of `IO`, `TTY`, `devnull`, etc...
@@ -43,8 +44,8 @@ struct SandboxConfig
     entrypoint::Union{String,Nothing}
     pwd::String
     persist::Bool
-    uid::Union{Int,Nothing}
-    gid::Union{Int,Nothing}
+    uid::Cint
+    gid::Cint
 
     stdin::AnyRedirectable
     stdout::AnyRedirectable
@@ -57,8 +58,8 @@ struct SandboxConfig
                            entrypoint::Union{String,Nothing} = nothing,
                            pwd::String = "/",
                            persist::Bool = false,
-                           uid::Union{Int,Nothing}=nothing,
-                           gid::Union{Int,Nothing}=nothing,
+                           uid::Integer=0,
+                           gid::Integer=0,
                            stdin::AnyRedirectable = Base.devnull,
                            stdout::AnyRedirectable = Base.stdout,
                            stderr::AnyRedirectable = Base.stderr,
@@ -84,6 +85,6 @@ struct SandboxConfig
         if !haskey(read_only_maps, "/")
             throw(ArgumentError("Must provide a read-only root mapping!"))
         end
-        return new(read_only_maps, read_write_maps, env, entrypoint, pwd, persist, uid, gid, stdin, stdout, stderr, verbose)
+        return new(read_only_maps, read_write_maps, env, entrypoint, pwd, persist, Cint(uid), Cint(gid), stdin, stdout, stderr, verbose)
     end
 end

@@ -141,12 +141,7 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
     end
 
     # Set the user and group, if requested
-    if config.uid !== nothing
-        append!(cmd_string, ["--uid", string(config.uid)])
-    end
-    if config.gid !== nothing
-        append!(cmd_string, ["--gid", string(config.gid)])
-    end
+    append!(cmd_string, ["--uid", string(config.uid), "--gid", string(config.gid)])
 
     # If we're running in privileged mode, we need to add `sudo` (or `su`, if `sudo` doesn't exist)
     if isa(exe, PrivilegedUserNamespacesExecutor)

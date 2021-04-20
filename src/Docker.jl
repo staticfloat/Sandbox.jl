@@ -1,4 +1,4 @@
-using Random
+using Random, Tar
 
 struct DockerExecutor <: SandboxExecutor
     label::String
@@ -57,11 +57,11 @@ function save_timestamp(image_name::String, timestamp::Float64)
     end
 end
 
-docker_image_name(root_path::String) = "sandbox_rootfs:$(string(Base._crc32c(root_path), base=16))"
+docker_image_name(root_path::String, uid::Cint, gid::Cint) = "sandbox_rootfs:$(string(Base._crc32c(root_path), base=16))-$(uid)-$(gid)"
 docker_image_label(exe::DockerExecutor) = string("org.julialang.sandbox.jl=", exe.label)
-function should_build_docker_image(root_path::String)
+function should_build_docker_image(root_path::String, uid::Cint, gid::Cint)
     # If the image doesn't exist at all, always return true
-    image_name = docker_image_name(root_path)
+    image_name = docker_image_name(root_path, uid, gid)
     if !success(`docker image inspect $(image_name)`)
         return true
     end
@@ -81,9 +81,9 @@ things on top of that, with no recursive mounting.  We cut down on unnecessary w
 somewhat by quick-scanning the directory for changes and only rebuilding if changes
 are detected.
 """
-function build_docker_image(root_path::String; verbose::Bool = false)
-    image_name = docker_image_name(root_path)
-    if should_build_docker_image(root_path)
+function build_docker_image(root_path::String, uid::Cint, gid::Cint; verbose::Bool = false)
+    image_name = docker_image_name(root_path, uid, gid)
+    if should_build_docker_image(root_path, uid, gid)
         max_ctime = max_directory_ctime(root_path)
         if verbose
             @info("Building docker image $(image_name) with max timestamp $(max_ctime)")
@@ -93,7 +93,7 @@ function build_docker_image(root_path::String; verbose::Bool = false)
         open(`docker import - $(image_name)`, "w", verbose ? stdout : devnull) do io
             # we need to record permisions, so can't use Tar.jl
             cd(root_path) do
-                run(pipeline(`tar -c .`, stdout=io))
+                run(pipeline(`tar -c --owner=$(uid) --group=$(gid) .`, stdout=io))
             end
         end
 
@@ -118,7 +118,7 @@ end
 
 function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user_cmd::Cmd)
     # Build the docker image that corresponds to this rootfs
-    image_name = build_docker_image(config.read_only_maps["/"]; verbose=config.verbose)
+    image_name = build_docker_image(config.read_only_maps["/"], config.uid, config.gid; verbose=config.verbose)
 
     if config.persist
         # If this is a persistent run, check to see if any previous runs have happened from
@@ -166,17 +166,8 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
         append!(cmd_string, ["--entrypoint", config.entrypoint])
     end
 
-    # Set the user and group, if requested
-    if config.uid !== nothing || config.gid !== nothing
-        user_str = ""
-        if config.uid !== nothing
-            user_str *= "$(config.uid)"
-        end
-        if config.gid !== nothing
-            user_str *= ":$(config.gid)"
-        end
-        append!(cmd_string, ["--user", user_str])
-    end
+    # Set the user and group
+    append!(cmd_string, ["--user", "$(config.uid):$(config.gid)"])
 
     # Finally, append the docker image name user-requested command string
     push!(cmd_string, image_name)
