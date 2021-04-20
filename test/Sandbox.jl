@@ -230,7 +230,7 @@ for executor in all_executors
         end
 
         @testset "explicit user and group" begin
-            for (uid,gid) in [(nothing,nothing), (999,nothing), (nothing,999), (999,999)]
+            for (uid,gid) in [(0,0), (999,0), (0,999), (999,999)]
                 stdout = IOBuffer()
 
                 config = SandboxConfig(
