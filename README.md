@@ -41,3 +41,7 @@ end
 ```
 
 While this launches an interactive session due to hooking up `stdout`/`stdin`, one can easily capture output by setting `stdout` to an `IOBuffer`, or even a `PipeBuffer` to chain together multiple processes from different sandboxes.
+
+## Getting more rootfs images
+
+To use more interesting rootfs images, you can either create your own using tools such as [`debootstrap`](https://wiki.debian.org/Debootstrap) or you can pull one from docker by using the `pull_docker_image()` function defined within this package.

@@ -126,7 +126,7 @@ end
 function probe_executor(executor::SandboxExecutor; verbose::Bool = false, test_read_only_map=false, test_read_write_map=false)
     mktempdir() do tmpdir
         read_only_maps = Dict{String,String}(
-            "/" => artifact"AlpineRootfs",
+            "/" => alpine_rootfs(),
         )
         read_write_maps = Dict{String,String}()
 
@@ -243,6 +243,7 @@ function probe_executor(executor::SandboxExecutor; verbose::Bool = false, test_r
 end
 
 # Convenience function for other users who want to do some testing
-alpine_rootfs() = artifact"AlpineRootfs"
+alpine_rootfs() = artifact"alpine-rootfs"
+julia_alpine_rootfs() = artifact"julia-alpine-rootfs"
 
 end # module

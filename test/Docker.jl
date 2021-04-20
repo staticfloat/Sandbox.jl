@@ -57,6 +57,27 @@ if executor_available(DockerExecutor)
                 end
             end
         end
+
+        @testset "pull_docker_image" begin
+            with_temp_scratch() do
+                julia_rootfs = Sandbox.pull_docker_image("julia:alpine"; force=true, verbose=true)
+
+                @test_logs (:warn, r"Will not overwrite") begin
+                    other_julia_rootfs = Sandbox.pull_docker_image("julia:alpine"; verbose=true)
+                    @test other_julia_rootfs == julia_rootfs
+                end
+
+                @test_logs (:warn, r"Cannot pull") begin
+                    @test Sandbox.pull_docker_image("pleasenooneactuallycreateanimagenamedthis"; verbose=true) === nothing
+                end
+
+                @test julia_rootfs !== nothing
+                @test isdir(julia_rootfs)
+
+                # Ensure it pulls a rootfs that actually contains `julia`
+                @test isfile(joinpath(julia_rootfs, "usr", "local", "julia", "bin", "julia"))
+            end
+        end
     end
 else
     @error("Skipping Docker tests, as it does not seem to be available")

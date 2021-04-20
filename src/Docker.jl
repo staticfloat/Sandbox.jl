@@ -182,3 +182,63 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
 
     return docker_cmd
 end
+
+sanitize_key(name) = replace(name, ':' => '-')
+
+"""
+    pull_docker_image(image::String,
+                      output_dir::String = <default scratch location>;
+                      force::Bool = false)
+
+Pulls and saves the given image name to the requested output directory.  Useful
+for pulling down a known good rootfs image from Docker Hub, for future use by
+Sandbox executors.  If `force` is set to true, will overwrite a pre-existing
+directory, otherwise will silently return.
+"""
+function pull_docker_image(image_name::String,
+                           output_dir::String = @get_scratch!("docker-hub-$(sanitize_key(image_name))");
+                           force::Bool = false,
+                           verbose::Bool = false)
+    if ispath(output_dir) && !isempty(readdir(output_dir))
+        if force
+            rmdir(output_dir; force=true, recursive=true)
+        else
+            if verbose
+                @warn("Will not overwrite pre-existing directory $(output_dir)")
+            end
+            return output_dir
+        end
+    end
+
+    # Pull the latest version of the image
+    try
+        run(`docker pull $(image_name)`)
+    catch
+        if verbose
+            @warn("Cannot pull", image_name)
+        end
+        return nothing
+    end
+
+    # Get a container ID ready to be passed to `docker export`
+    container_id = readchomp(`docker create $(image_name)`)
+
+    # Get the ID of that container (since we can't export by label, sadly)
+    if isempty(container_id)
+        if verbose
+            @warn("Unable to create conatiner based on $(image_name)")
+        end
+        return nothing
+    end
+
+    # Export the container filesystem to a directory
+    try
+        mkpath(output_dir)
+        open(`docker export $(container_id)`) do tar_io
+            Tar.extract(tar_io, output_dir)
+        end
+    finally
+        run(`docker rm -f $(container_id)`)
+    end
+    return output_dir
+end
