@@ -155,7 +155,7 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
             end
             prepend!(cmd_string, String[sudo_cmd()..., sudo_envs...])
         else
-            prepend!(sudo_cmd, sudo_cmd())
+            prepend!(cmd_string, sudo_cmd())
         end
     end
 
@@ -164,7 +164,7 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
     append!(cmd_string, user_cmd.exec)
 
     # Construct a `Cmd` object off of those, with the SandboxConfig's env (if this is an unprivileged runner):
-    sandbox_cmd = Cmd(cmd_string)
+    sandbox_cmd = setenv(Cmd(cmd_string), String[])
     if isa(exe, UnprivilegedUserNamespacesExecutor)
         sandbox_cmd = setenv(sandbox_cmd, config.env)
 
