@@ -1,4 +1,4 @@
-using Test, Artifacts
+using Test, LazyArtifacts, Sandbox
 
 @testset "SandboxConfig" begin
     rootfs_dir = Sandbox.alpine_rootfs()
