@@ -168,6 +168,13 @@ Wrapper around libc's `getuid()` function
 """
 getuid() = ccall(:getuid, Cint, ())
 
+"""
+    getgid()
+
+Wrapper around libc's `getuid()` function
+"""
+getgid() = ccall(:getgid, Cint, ())
+
 _sudo_cmd = nothing
 function sudo_cmd()
     global _sudo_cmd
