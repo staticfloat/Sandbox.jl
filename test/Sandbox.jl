@@ -240,13 +240,67 @@ for executor in all_executors
                 with_executor(executor) do exe
                     @test success(run(exe, config, `/usr/bin/id`))
                     str = String(take!(stdout))
-                    @test contains(str, "uid=$(something(uid,0))")
-                    @test contains(str, "gid=$(something(gid,0))")
+                    @test contains(str, "uid=$(uid)")
+                    @test contains(str, "gid=$(gid)")
+                end
+            end
+        end
+
+        # If we have the docker executor available (necessary to do the initial pull),
+        # let's test launching off of a docker image
+        if executor_available(DockerExecutor)
+            julia_rootfs = Sandbox.pull_docker_image("julia:alpine")
+            @testset "launch from docker image" begin
+                stdout = IOBuffer()
+                stderr = IOBuffer()
+                config = SandboxConfig(
+                    Dict("/" => julia_rootfs),
+                    Dict{String,String}(),
+                    # Add the path to `julia` onto the path, then use `sh` to process the PATH
+                    Dict("PATH" => "/usr/local/julia/bin:/usr/local/bin:/usr/bin:/bin");
+                    stdout = stdout,
+                    stderr = stderr,
+                )
+
+                with_executor(executor) do exe
+                    @test success(run(exe, config, `/bin/sh -c "julia -e 'println(\"Hello, Julia!\")'"`))
+                    @test String(take!(stdout)) == "Hello, Julia!\n";
+                    @test isempty(take!(stderr))
+                end
+            end
+        end
+
+        @testset "Internet access" begin
+            mktempdir() do rw_dir
+                ro_mappings = Dict(
+                    "/" => rootfs_dir,
+                )
+
+                # Mount in `/etc/resolv.conf` as a read-only mount if using a UserNS executor, so that we have DNS
+                if executor <: UserNamespacesExecutor && isfile("/etc/resolv.conf")
+                    resolv_conf = joinpath(rw_dir, "resolv.conf")
+                    cp("/etc/resolv.conf", resolv_conf; follow_symlinks=true)
+                    ro_mappings["/etc/resolv.conf"] = resolv_conf
+                end
+
+                config = SandboxConfig(
+                    ro_mappings,
+                    Dict("/tmp/rw_dir" => rw_dir),
+                )
+
+                socrates_url = "https://github.com/staticfloat/small_bin/raw/master/socrates.tar.xz"
+                socrates_hash = "61bcf109fcb749ee7b6a570a6057602c08c836b6f81091eab7aa5f5870ec6475"
+                with_executor(executor) do exe
+                    @test success(run(exe, config, `/bin/sh -c "wget -q $(socrates_url) -O /tmp/rw_dir/$(basename(socrates_url))"`))
+                    socrates_path = joinpath(rw_dir, basename(socrates_url))
+                    @test isfile(socrates_path)
+                    @test open(io -> bytes2hex(sha256(io)), socrates_path) == socrates_hash
                 end
             end
         end
     end
 end
+
 
 @testset "default executor" begin
     stdout = IOBuffer()
