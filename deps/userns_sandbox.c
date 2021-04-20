@@ -145,7 +145,7 @@ static void touch(const char * path) {
 static void mkpath(const char * dir) {
   // If this directory already exists, back out.
   DIR * dir_obj = opendir(dir);
-  if( dir_obj ) {
+  if (dir_obj) {
     closedir(dir_obj);
     return;
   }
@@ -158,6 +158,15 @@ static void mkpath(const char * dir) {
   // then create our directory
   int result = mkdir(dir, 0777);
   check((0 == result) || (errno == EEXIST));
+}
+
+static int isdir(const char * path) {
+  struct stat path_stat;
+  int result = stat(path, &path_stat);
+
+  // Silently ignore calling `isdir()` on a non-existant path
+  check((0 == result) || (errno == ENOENT) || (errno == ENOTDIR));
+  return S_ISDIR(path_stat.st_mode);
 }
 
 /**** User namespaces *****
@@ -271,18 +280,32 @@ static void mount_procfs(const char * root_dir, uid_t uid, gid_t gid) {
 }
 
 static void bind_mount(const char *src, const char *dest, char read_only) {
+  // If `src` is a symlink, this bindmount may run into issues, so we collapse
+  // `src` via `realpath()` to ensure that we get a non-symlink.
+  char resolved_src[PATH_MAX];
+  check(NULL != realpath(src, resolved_src));
+
   if (verbose) {
     if (read_only) {
-      fprintf(stderr, "--> Bind-mounting %s over %s (read-only)\n", src, dest);
+      fprintf(stderr, "--> Bind-mounting %s over %s (read-only)\n", resolved_src, dest);
     } else {
-      fprintf(stderr, "--> Bind-mounting %s over %s\n", src, dest);
+      fprintf(stderr, "--> Bind-mounting %s over %s (read-write)\n", resolved_src, dest);
     }
   }
+
+  // If we're mounting in a directory, create the mountpoint as a directory,
+  // otherwise as a file.  Note that if `src` does not exist, we'll create a
+  // file here, then error out on the `mount()` call.
+  if (isdir(resolved_src)) {
+    mkpath(dest);
+  } else {
+    touch(dest);
+  }
+
   // We don't expect workspaces to have any submounts in normal operation.
   // However, for runshell(), workspace could be an arbitrary directory,
   // including one with sub-mounts, so allow that situation with MS_REC.
-  touch(dest);
-  check(0 == mount(src, dest, "", MS_BIND|MS_REC, NULL));
+  check(0 == mount(resolved_src, dest, "", MS_BIND|MS_REC, NULL));
 
   if (read_only) {
     // remount to read-only, nodev, suid.
@@ -293,7 +316,7 @@ static void bind_mount(const char *src, const char *dest, char read_only) {
     // extra flags is harmless.  If we ever cared in the future, the thing to do
     // would to do would be to read `/proc/self/fdinfo` or the directory, find the
     // `mnt_id` and extract the correct flags from `/proc/self/mountinfo`.
-    check(0 == mount(src, dest, "", MS_BIND|MS_REMOUNT|MS_RDONLY|MS_NODEV|MS_NOSUID, NULL));
+    check(0 == mount(resolved_src, dest, "", MS_BIND|MS_REMOUNT|MS_RDONLY|MS_NODEV|MS_NOSUID, NULL));
   }
 }
 
@@ -350,17 +373,7 @@ static void mount_maps(const char * dest, struct map_list * workspaces, uint8_t 
     }
     snprintf(path, sizeof(path), "%s/%s", dest, inside);
 
-    // retport to the user, signifying a read-write mount as a "workspace".
-    if (verbose) {
-      if (read_only) {
-        fprintf(stderr, "--> mapping %s to %s\n", current_entry->outside_path, path);
-      } else {
-        fprintf(stderr, "--> workspacing %s to %s\n", current_entry->outside_path, path);
-      }
-    }
-
-    // Ensure there is a directory ready to receive the mount, then bind-mount it.
-    mkpath(path);
+    // bind-mount the outside path to the inside path
     bind_mount(current_entry->outside_path, path, read_only);
     current_entry = current_entry->prev;
   }
@@ -448,15 +461,26 @@ static int sandbox_main(const char * root_dir, const char * new_cd, int sandbox_
 
   // Use `pivot_root()` to avoid bad interaction between `chroot()` and `clone()`,
   // where we get an EPERM on nested sandboxing.
+  if (verbose) {
+    fprintf(stderr, "Entering rootfs at %s\n", root_dir);
+  }
   check(0 == chdir(root_dir));
   if (syscall(SYS_pivot_root, ".", ".") == 0) {
+    // Unmount `.`, which will unmount the old root, since that's the first mountpoint in this directory
     check(0 == umount2(".", MNT_DETACH));
     check(0 == chdir("/"));
+
+    if (verbose) {
+      fprintf(stderr, "--> pivot_root() succeeded and unmounted old root\n");
+    }
   } else {
     check(0 == chroot(root_dir));
+    if (verbose) {
+      fprintf(stderr, "--> chroot() used since pivot_root() errored with: [%d] %s, nested sandboxing unavailable\n", errno, strerror(errno));
+    }
   }
 
-  // If we've got a directory to change to, do so, possibly creating it if we need to
+  // If we've got a directory to change to, do so, creating it if we need to
   if (new_cd) {
     mkpath(new_cd);
     check(0 == chdir(new_cd));
