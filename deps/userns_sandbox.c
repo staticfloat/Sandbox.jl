@@ -283,7 +283,12 @@ static void bind_mount(const char *src, const char *dest, char read_only) {
   // If `src` is a symlink, this bindmount may run into issues, so we collapse
   // `src` via `realpath()` to ensure that we get a non-symlink.
   char resolved_src[PATH_MAX];
-  check(NULL != realpath(src, resolved_src));
+  if (NULL == realpath(src, resolved_src)) {
+    if (verbose) {
+      fprintf(stderr, "WARNING: Unable to resolve %s ([%d] %s)\n", src, errno, strerror(errno));
+    }
+    strncpy(resolved_src, src, PATH_MAX);
+  }
 
   if (verbose) {
     if (read_only) {
