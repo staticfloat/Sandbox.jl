@@ -1,10 +1,3 @@
-run(`ls -la /`)
-run(`ls -la /tmp/readwrite`)
-@info("uid_map/gid_map")
-run(`cat /proc/self/uid_map`)
-run(`cat /proc/self/gid_map`)
-
-
 # Instantiate as when we're a child, we may not be instantiated
 using Pkg
 Pkg.instantiate()
