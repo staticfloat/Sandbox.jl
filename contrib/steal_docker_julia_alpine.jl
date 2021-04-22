@@ -1,7 +1,7 @@
 #!/usr/bin/env julia
 
-using Sandbox, Pkg, Pkg.Artifacts, Scratch
-using ghr_jll, SHA
+# This is an example invocation of `pull_docker_image()` to steal the `julia:alpine` image from Docker
+using Sandbox, Pkg, Pkg.Artifacts, Scratch, ghr_jll, SHA
 
 docker_image = "julia:alpine"
 
@@ -34,4 +34,5 @@ bind_artifact!(
     artifact_hash;
     download_info=[(tarball_url, tarball_hash)],
     lazy=true,
+    force=true,
 )
