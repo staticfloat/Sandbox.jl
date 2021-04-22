@@ -169,6 +169,15 @@ static int isdir(const char * path) {
   return S_ISDIR(path_stat.st_mode);
 }
 
+static int islink(const char * path) {
+  struct stat path_stat;
+  int result = stat(path, &path_stat);
+
+  // Silently ignore calling `islink()` on a non-existant path
+  check((0 == result) || (errno == ENOENT) || (errno == ENOTDIR));
+  return S_ISLNK(path_stat.st_mode);
+}
+
 /**** User namespaces *****
  *
  * For a general overview on user namespaces, see the corresponding manual page
@@ -282,11 +291,16 @@ static void mount_procfs(const char * root_dir, uid_t uid, gid_t gid) {
 static void bind_mount(const char *src, const char *dest, char read_only) {
   // If `src` is a symlink, this bindmount may run into issues, so we collapse
   // `src` via `realpath()` to ensure that we get a non-symlink.
-  char resolved_src[PATH_MAX];
-  if (NULL == realpath(src, resolved_src)) {
-    if (verbose) {
-      fprintf(stderr, "WARNING: Unable to resolve %s ([%d] %s)\n", src, errno, strerror(errno));
+  char resolved_src[PATH_MAX] = {0};
+  if (islink(src)) {
+    if (NULL == realpath(src, resolved_src)) {
+      if (verbose) {
+        fprintf(stderr, "WARNING: Unable to resolve %s ([%d] %s)\n", src, errno, strerror(errno));
+      }
     }
+  }
+
+  if (resolved_src[0] == NULL) {
     strncpy(resolved_src, src, PATH_MAX);
   }
 
