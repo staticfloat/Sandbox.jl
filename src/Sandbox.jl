@@ -256,5 +256,6 @@ end
 # Convenience function for other users who want to do some testing
 alpine_rootfs() = artifact"alpine-rootfs"
 julia_alpine_rootfs() = artifact"julia-alpine-rootfs"
+debian_rootfs() = artifact"debian-minimal-rootfs"
 
 end # module
