@@ -15,9 +15,11 @@ config = SandboxConfig(
     verbose=true,
 )
 
+# Prove that we can write into the `readwrite` location
 open("/tmp/readwrite/single_nested.txt", "w") do io
     println(io, "aperture")
 end
+
 # This should always default to the unprivileged executor, since if we're nested, `FORCE_SANDBOX_MODE` should be set
 with_executor() do exe
     @test success(run(exe, config, `/bin/sh -c "echo science > /tmp/readwrite/double_nested.txt"`))
