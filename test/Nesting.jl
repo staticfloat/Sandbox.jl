@@ -57,7 +57,7 @@ using Test, Sandbox, Scratch, Pkg
 
                 cmd = `/bin/sh -c "julia --color=yes --project test/nested/nested_child.jl"`
                 with_executor(executor) do exe
-                    @test success(run(exe, config, cmd))
+                    @test success(exe, config, cmd)
                 end
                 @test isfile(joinpath(rw_dir, "single_nested.txt"))
                 @test isfile(joinpath(rw_dir, "double_nested.txt"))
