@@ -22,6 +22,6 @@ end
 
 # This should always default to the unprivileged executor, since if we're nested, `FORCE_SANDBOX_MODE` should be set
 with_executor() do exe
-    @test success(run(exe, config, `/bin/sh -c "echo science > /tmp/readwrite/double_nested.txt"`))
+    @test success(exe, config, `/bin/sh -c "echo science > /tmp/readwrite/double_nested.txt"`)
 end
 @test String(read("/tmp/readwrite/double_nested.txt")) == "science\n"
