@@ -44,4 +44,4 @@ While this launches an interactive session due to hooking up `stdout`/`stdin`, o
 
 ## Getting more rootfs images
 
-To use more interesting rootfs images, you can either create your own using tools such as [`debootstrap`](https://wiki.debian.org/Debootstrap) or you can pull one from docker by using the `pull_docker_image()` function defined within this package.
+To use more interesting rootfs images, you can either create your own using tools such as [`debootstrap`](https://wiki.debian.org/Debootstrap) or you can pull one from docker by using the `pull_docker_image()` function defined within this package.  See the [`contrib`](contrib/) directory for examples of both.
