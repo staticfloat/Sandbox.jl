@@ -1,7 +1,7 @@
 name = "Sandbox"
 uuid = "9307e30f-c43e-9ca7-d17c-c2dc59df670d"
 authors = ["Elliot Saba <staticfloat@gmail.com>"]
-version = "0.1.0"
+version = "1.0.0"
 
 [deps]
 JLLWrappers = "692b3bcd-3c85-4b1f-b108-f13ce0eb3210"
