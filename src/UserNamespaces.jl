@@ -61,6 +61,10 @@ Base.show(io::IO, exe::UnprivilegedUserNamespacesExecutor) = write(io, "Unprivil
 Base.show(io::IO, exe::PrivilegedUserNamespacesExecutor) = write(io, "Privileged User Namespaces Executor")
 
 function executor_available(::Type{T}; verbose::Bool=false) where {T <: UserNamespacesExecutor}
+    # If we're on a platform that doesn't even have `sandbox` available, return false
+    if !UserNSSandbox_jll.is_available()
+        return false
+    end
     return with_executor(T) do exe
         return check_kernel_version(;verbose) &&
                probe_executor(exe; test_read_only_map=true, test_read_write_map=true, verbose)
