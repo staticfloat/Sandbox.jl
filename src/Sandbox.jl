@@ -4,6 +4,7 @@ using Preferences, Scratch, LazyArtifacts, TOML, Libdl
 import Base: run, success
 export SandboxExecutor, DockerExecutor, UserNamespacesExecutor, SandboxConfig,
        preferred_executor, executor_available, probe_executor, run, cleanup, with_executor
+using Base.BinaryPlatforms
 
 # Include some utilities for things like file manipulation, uname() parsing, etc...
 include("utils.jl")
@@ -81,7 +82,7 @@ function select_executor(verbose::Bool)
             return executor
         end
     end
-    error("Could not find any available executors!")
+    error("Could not find any available executors for $(triplet(HostPlatform()))!")
 end
 
 _preferred_executor = nothing

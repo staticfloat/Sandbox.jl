@@ -85,7 +85,7 @@ using Test, Sandbox, Scratch, Pkg
                         with_executor(executor; privileges) do exe
                             @test !success(exe, config_with_stderr, cmd)
                             # Ensure that we get the nested sandbox unable to run any nested sandboxing
-                            @test occursin("Could not find any available executors!", String(take!(stderr)))
+                            @test occursin("Could not find any available executors", String(take!(stderr)))
                         end
                     end
                 end
