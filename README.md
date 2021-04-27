@@ -2,12 +2,17 @@
 
 [![Stable][docs-stable-img]][docs-stable-url]
 [![Dev][docs-dev-img]][docs-dev-url]
-
+[![Build Status][ci-img]][ci-url]
+[![Coverage][codecov-img]][codecov-url]
 
 [docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
 [docs-stable-url]: https://staticfloat.github.io/Sandbox.jl/stable
 [docs-dev-img]: https://img.shields.io/badge/docs-dev-blue.svg
 [docs-dev-url]: https://staticfloat.github.io/Sandbox.jl/dev
+[ci-img]: https://github.com/staticfloat/Sandbox.jl/workflows/CI/badge.svg
+[ci-url]: https://github.com/staticfloat/Sandbox.jl/actions/workflows/ci.yml
+[codecov-img]: https://codecov.io/gh/staticfloat/Sandbox.jl/branch/master/graph/badge.svg
+[codecov-url]: https://codecov.io/gh/staticfloat/Sandbox.jl
 
 > The cultured host's toolkit for ill-mannered Linux guests.
 
