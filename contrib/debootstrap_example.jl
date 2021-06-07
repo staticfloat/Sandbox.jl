@@ -19,17 +19,30 @@ artifact_hash = create_artifact() do rootfs
     # Remove special `dev` files
     @info("Cleaning up `/dev`")
     for f in readdir(joinpath(rootfs, "dev"); join=true)
-        run(`sudo rm -rf "$(f)"`)
+        # Keep the symlinks around (such as `/dev/fd`), as they're useful
+        if !islink(f)
+            run(`sudo rm -rf "$(f)"`)
+        end
     end
 
     # take ownership of the entire rootfs
     @info("Chown'ing rootfs")
     run(`sudo chown $(getuid()):$(getgid()) -R "$(rootfs)"`)
 
+    # Write out a reasonable default resolv.conf
+    open(joinpath(rootfs, "etc", "resolv.conf"), write=true) do io
+        write(io, """
+        nameserver 1.1.1.1
+        nameserver 8.8.8.8
+        nameserver 8.8.4.4
+        nameserver 4.4.4.4
+        """)
+    end
+
     # Remove `_apt` user so that `apt` doesn't try to `setgroups()`
     @info("Removing `_apt` user")
-    open(joinpath(rootfs, "etc", "passwd"), "w+") do io
-        filtered_lines = filter(l -> !startswith("_apt:", l), readlines(io))
+    open(joinpath(rootfs, "etc", "passwd"), write=true, read=true) do io
+        filtered_lines = filter(l -> !startswith(l, "_apt:"), readlines(io))
         truncate(io, 0)
         for l in filtered_lines
             println(io, l)
@@ -42,7 +55,7 @@ artifact_hash = create_artifact() do rootfs
         println(io, "en_US.UTF-8 UTF-8")
     end
     @info("Regenerating locale")
-    run(`sudo chroot $(rootfs) locale-gen`)
+    run(`sudo chroot --userspec=$(getuid()):$(getgid()) $(rootfs) locale-gen`)
     @info("Done!")
 end
 
