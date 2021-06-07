@@ -19,9 +19,9 @@ jobs:
           - "nightly"
         julia-arch:
           - "x64"
-        build-sandbox:
-          - ""
-          - "build local sandbox"
+        build-local-sandbox:
+          - "true"
+          - "false"
 
     steps:
       - uses: actions/checkout@v2
@@ -40,29 +40,9 @@ jobs:
             ${{ runner.os }}-test-${{ env.cache-name }}-
             ${{ runner.os }}-test-
             ${{ runner.os }}-
-      - name: Manually instantiate
-        run: julia --project -e 'using Pkg; Pkg.instantiate()'
-      - name: Build Sandbox
-        run: julia --project deps/build_local_sandbox.jl
-        if: ${{ matrix.build-sandbox != '' }}
-      - name: Ensure sandbox is from artifact
-        run: |
-          julia --project -e 'using Test, UserNSSandbox_jll, Artifacts;
-            @info("sandbox", UserNSSandbox_jll.sandbox_path)
-            @test any(startswith(UserNSSandbox_jll.sandbox_path, d) for d in Artifacts.artifacts_dirs())
-          '
-        if: ${{ matrix.build-sandbox == '' }}
-      - name: Ensure sandbox is locally built
-        run: |
-          julia --project -e 'using Test, UserNSSandbox_jll, Scratch;
-            @info("sandbox", UserNSSandbox_jll.sandbox_path)
-            @test startswith(UserNSSandbox_jll.sandbox_path, Scratch.scratch_dir())
-          '
-        if: ${{ matrix.build-sandbox != '' }}
-      - name: Set preferences for test project
-        run: sed 's/\[\(.*\)\]/[preferences.\1]/' LocalPreferences.toml >> test/Project.toml
-        if: ${{ matrix.build-sandbox != '' }}
       - uses: julia-actions/julia-runtest@v1
+        env:
+          SANDBOX_BUILD_LOCAL_SANDBOX: ${{ matrix.build-local-sandbox }}
       - uses: julia-actions/julia-processcoverage@v1
       - uses: codecov/codecov-action@v1
         with:
