@@ -7,12 +7,12 @@ lazy = true
     url = "https://github.com/alpinelinux/docker-alpine/raw/2f3c3015951938c521e752899a92ecd618e0c05b/x86_64/alpine-minirootfs-3.12.4-x86_64.tar.gz"
 
 [debian-minimal-rootfs]
-git-tree-sha1 = "b5a8adc506f9ca0bb1595f59cc0bec6002ffc0e5"
+git-tree-sha1 = "5b44fab874ec426cad9b80b7dffd2b3f927c9e7f"
 lazy = true
 
     [[debian-minimal-rootfs.download]]
-    sha256 = "dc6dc199e9be8b0659f3ab3bd62a262ea828fbc776f80f1b96620a783de12d84"
-    url = "https://github.com/staticfloat/Sandbox.jl/releases/download/debian-minimal-02ffc0e5/debian_minimal.tar.gz"
+    sha256 = "2fb887d824c4f8defa903e9fefe9369d6635bd115e2843a6d103c0712c61c50e"
+    url = "https://github.com/staticfloat/Sandbox.jl/releases/download/debian-minimal-927c9e7f/debian_minimal.tar.gz"
 
 [julia-alpine-rootfs]
 git-tree-sha1 = "2a09164e817e43448ff352b34e601f5446e8be7e"

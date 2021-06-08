@@ -44,6 +44,7 @@ artifact_hash = create_artifact() do rootfs
     open(joinpath(rootfs, "etc", "passwd"), write=true, read=true) do io
         filtered_lines = filter(l -> !startswith(l, "_apt:"), readlines(io))
         truncate(io, 0)
+        seek(io, 0)
         for l in filtered_lines
             println(io, l)
         end
