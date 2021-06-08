@@ -150,7 +150,7 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
     append!(cmd_string, ["--uid", string(config.uid), "--gid", string(config.gid)])
 
     # If we're running in privileged mode, we need to add `sudo` (or `su`, if `sudo` doesn't exist)
-    if isa(exe, PrivilegedUserNamespacesExecutor)
+    if isa(exe, PrivilegedUserNamespacesExecutor) && getuid() != 0
         # Next, prefer `sudo`, but allow fallback to `su`. Also, force-set our
         # environmental mappings with sudo, because many of these are often  lost
         # and forgotten due to `sudo` restrictions on setting `LD_LIBRARY_PATH`, etc...
