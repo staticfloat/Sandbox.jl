@@ -206,7 +206,7 @@ function probe_executor(executor::SandboxExecutor; verbose::Bool = false, test_r
         end
 
         # No stderr output (unless we're running in verbose mode)
-        if !verbose
+        if verbose
             stderr_output = String(take!(cmd_stderr))
             if !isempty(stderr_output)
                 @warn(" -> Non-empty stderr output", stderr_output)

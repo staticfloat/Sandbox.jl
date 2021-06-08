@@ -7,6 +7,16 @@ if !success(`sudo -k -n true`)
     all_executors = filter(exe -> exe != PrivilegedUserNamespacesExecutor, all_executors)
 end
 
+function print_if_nonempty(stderr::Vector{UInt8})
+    if !isempty(stderr)
+        stderr = String(stderr)
+        @error("not empty")
+        println(stderr)
+        return false
+    end
+    return true
+end
+
 rootfs_dir = Sandbox.alpine_rootfs()
 for executor in all_executors
     if !executor_available(executor)
@@ -135,10 +145,10 @@ for executor in all_executors
                 with_executor(executor) do exe
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`)
                     @test String(take!(stdout)) == "aperture\n";
-                    @test isempty(take!(stderr))
+                    @test print_if_nonempty(take!(stderr))
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`)
                     @test String(take!(stdout)) == "aperture\n";
-                    @test isempty(take!(stderr))
+                    @test print_if_nonempty(take!(stderr))
 
                     # An actual read-only mount will not allow writing, because it's truly read-only
                     @test !success(exe, config, ignorestatus(`/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`))
@@ -147,10 +157,10 @@ for executor in all_executors
                     # A read-write mount, on the other hand, will be permanent
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`)
                     @test String(take!(stdout)) == "aperture\n";
-                    @test isempty(take!(stderr))
+                    @test print_if_nonempty(take!(stderr))
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`)
                     @test String(take!(stdout)) == "aperture\naperture\n";
-                    @test isempty(take!(stderr))
+                    @test print_if_nonempty(take!(stderr))
                 end
             end
         end
@@ -191,10 +201,10 @@ for executor in all_executors
                 with_executor(executor) do exe
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
                     @test String(take!(stdout)) == "entrypoint activated\naperture\n";
-                    @test isempty(take!(stderr))
+                    @test print_if_nonempty(take!(stderr))
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
                     @test String(take!(stdout)) == "entrypoint activated\naperture\n";
-                    @test isempty(take!(stderr))
+                    @test print_if_nonempty(take!(stderr))
                 end
             end
         end
@@ -215,16 +225,16 @@ for executor in all_executors
                 with_executor(executor) do exe
                     @test success(exe, config, cmd)
                     @test String(take!(stdout)) == "aperture\n";
-                    @test isempty(take!(stderr))
+                    @test print_if_nonempty(take!(stderr))
                     @test success(exe, config, cmd)
                     @test String(take!(stdout)) == "aperture\naperture\n";
-                    @test isempty(take!(stderr))
+                    @test print_if_nonempty(take!(stderr))
                 end
 
                 with_executor(executor) do exe
                     @test success(exe, config, cmd)
                     @test String(take!(stdout)) == "aperture\n";
-                    @test isempty(take!(stderr))
+                    @test print_if_nonempty(take!(stderr))
                 end
             end
         end
@@ -265,7 +275,7 @@ for executor in all_executors
                 with_executor(executor) do exe
                     @test success(exe, config, `/bin/sh -c "julia -e 'println(\"Hello, Julia!\")'"`)
                     @test String(take!(stdout)) == "Hello, Julia!\n";
-                    @test isempty(take!(stderr))
+                    @test print_if_nonempty(take!(stderr))
                 end
             end
         end
