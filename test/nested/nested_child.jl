@@ -12,6 +12,7 @@ config = SandboxConfig(
     Dict("/" => rootfs_dir),
     # Propagate our readwrite mounting into the nested sandbox
     Dict{String,String}("/tmp/readwrite" => "/tmp/readwrite"),
+    persist=true,
     verbose=true,
 )
 

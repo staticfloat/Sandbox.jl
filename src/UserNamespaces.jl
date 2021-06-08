@@ -139,7 +139,9 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
     # setup, if we do not, create a temporary directory and set it into our executor
     if config.persist
         if exe.persistence_dir === nothing
-            exe.persistence_dir = mktempdir()
+            persist_parent_dir = get(ENV, "SANDBOX_PERSISTENCE_DIR", tempdir())
+            mkpath(persist_parent_dir)
+            exe.persistence_dir = mktempdir(persist_parent_dir)
         end
         append!(cmd_string, ["--persist", exe.persistence_dir])
     end

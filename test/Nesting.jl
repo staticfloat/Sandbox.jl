@@ -20,10 +20,13 @@ using Test, Sandbox, Scratch, Pkg
         @testset "$(executor) Nesting" begin
             pkgdir = dirname(@__DIR__)
             mktempdir() do dir
+                # Directory to hold read-writing from nested sandboxen
                 rw_dir = joinpath(dir, "rw")
                 mkpath(rw_dir)
                 mkpath(joinpath(rw_dir, "home"))
 
+                # Directory to hold sandbox persistence data
+                persist_dir = mktempdir(get(ENV, "SANDBOX_PERSISTENCE_DIR", tempdir()))
                 ro_mappings = Dict(
                     # Mount in the rootfs
                     "/" => rootfs_dir,
@@ -41,15 +44,31 @@ using Test, Sandbox, Scratch, Pkg
                     ro_mappings["/etc/resolv.conf"] = resolv_conf
                 end
 
+                # Build environment mappings
+                env = Dict(
+                    "PATH" => "/usr/local/julia/bin:/usr/local/bin:/usr/bin:/bin",
+                    "HOME" => "/tmp/readwrite/home",
+                    # Because overlayfs nesting with persistence requires mounting an overlayfs with
+                    # a non-tmpfs-hosted workdir, and that's illegal on top of another overlayfs, we
+                    # need to thread our persistence mappings through to the client.  We do so by
+                    # bind-mounting `/sandbox_persistence` into the sandbox for future recursive mountings
+                    "SANDBOX_PERSISTENCE_DIR" => "/sandbox_persistence",
+                )
+                # If we're a nested sandbox, pass the forcing through
+                if haskey(ENV, "FORCE_SANDBOX_MODE")
+                    env["FORCE_SANDBOX_MODE"] = ENV["FORCE_SANDBOX_MODE"]
+                end
+
                 config = SandboxConfig(
                     ro_mappings,
-                    # Mount a temporary directory in as writable
-                    Dict("/tmp/readwrite" => rw_dir),
-                    # Add the path to `julia` onto the path
                     Dict(
-                        "PATH" => "/usr/local/julia/bin:/usr/local/bin:/usr/bin:/bin",
-                        "HOME" => "/tmp/readwrite/home",
-                    );
+                        # Mount a temporary directory in as writable
+                        "/tmp/readwrite" => rw_dir,
+                        # Mount a directory to hold our persistent sandbox data
+                        "/sandbox_persistence" => persist_dir,
+                    ),
+                    # Add the path to `julia` onto the path
+                    env;
                     pwd = "/app",
                     uid = Sandbox.getuid(),
                     gid = Sandbox.getgid(),
