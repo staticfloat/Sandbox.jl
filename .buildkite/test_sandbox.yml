@@ -9,7 +9,7 @@ steps:
       # Install Julia
       - JuliaCI/julia#v1:
           version: "${JULIA_VERSION}"
-      # Install gcc
+      # Install `gcc` so that we can build the local sandbox, and `sudo` so that we can test the privileged runner
       - improbable-eng/metahook:
           pre-command: apt install -y gcc sudo
       # Run standard tests, possibly building a local sandbox
