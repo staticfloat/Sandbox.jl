@@ -258,5 +258,6 @@ end
 alpine_rootfs() = artifact"alpine-rootfs"
 julia_alpine_rootfs() = artifact"julia-alpine-rootfs"
 debian_rootfs() = artifact"debian-minimal-rootfs"
+julia_python3_rootfs() = artifact"debian-julia-python3-rootfs"
 
 end # module
