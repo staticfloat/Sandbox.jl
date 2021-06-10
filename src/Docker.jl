@@ -200,19 +200,20 @@ end
 sanitize_key(name) = replace(name, ':' => '-')
 
 """
-    pull_docker_image(image::String,
-                      output_dir::String = <default scratch location>;
-                      force::Bool = false)
+    export_docker_image(image::String,
+                        output_dir::String = <default scratch location>;
+                        verbose::Bool = false,
+                        force::Bool = false)
 
-Pulls and saves the given image name to the requested output directory.  Useful
+Exports the given docker image name to the requested output directory.  Useful
 for pulling down a known good rootfs image from Docker Hub, for future use by
 Sandbox executors.  If `force` is set to true, will overwrite a pre-existing
 directory, otherwise will silently return.
 """
-function pull_docker_image(image_name::String,
-                           output_dir::String = @get_scratch!("docker-hub-$(sanitize_key(image_name))");
-                           force::Bool = false,
-                           verbose::Bool = false)
+function export_docker_image(image_name::String,
+                             output_dir::String = @get_scratch!("docker-$(sanitize_key(image_name))");
+                             force::Bool = false,
+                             verbose::Bool = false)
     if ispath(output_dir) && !isempty(readdir(output_dir))
         if force
             rmdir(output_dir; force=true, recursive=true)
@@ -222,16 +223,6 @@ function pull_docker_image(image_name::String,
             end
             return output_dir
         end
-    end
-
-    # Pull the latest version of the image
-    try
-        run(`docker pull $(image_name)`)
-    catch
-        if verbose
-            @warn("Cannot pull", image_name)
-        end
-        return nothing
     end
 
     # Get a container ID ready to be passed to `docker export`
@@ -255,4 +246,44 @@ function pull_docker_image(image_name::String,
         run(`docker rm -f $(container_id)`)
     end
     return output_dir
+end
+
+"""
+    pull_docker_image(image::String,
+                      output_dir::String = <default scratch location>;
+                      verbose::Bool = false,
+                      force::Bool = false)
+
+Pulls and saves the given docker image name to the requested output directory.
+Useful for pulling down a known good rootfs image from Docker Hub, for future use
+by Sandbox executors.  If `force` is set to true, will overwrite a pre-existing
+directory, otherwise will silently return.
+"""
+function pull_docker_image(image_name::String,
+                           output_dir::String = @get_scratch!("docker-$(sanitize_key(image_name))");
+                           force::Bool = false,
+                           verbose::Bool = false)
+    if ispath(output_dir) && !isempty(readdir(output_dir))
+        if force
+            rmdir(output_dir; force=true, recursive=true)
+        else
+            if verbose
+                @warn("Will not overwrite pre-existing directory $(output_dir)")
+            end
+            return output_dir
+        end
+    end
+
+    # Pull the latest version of the image
+    try
+        run(`docker pull $(image_name)`)
+    catch
+        if verbose
+            @warn("Cannot pull", image_name)
+        end
+        return nothing
+    end
+
+    # Once the image is pulled, export it to given output directory
+    return export_docker_image(image_name, output_dir; force, verbose)
 end

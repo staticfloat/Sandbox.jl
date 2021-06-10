@@ -21,3 +21,11 @@ lazy = true
     [[julia-alpine-rootfs.download]]
     sha256 = "846a3aa9350bf23ca1a2bd862c53eae12e5b570ac06f48242a047134cbba78f1"
     url = "https://github.com/staticfloat/Sandbox.jl/releases/download/julia-alpine-46e8be7e/julia_alpine.tar.gz"
+
+[debian-julia-python3-rootfs]
+git-tree-sha1 = "dbeb5829a137e6a49337590543daa77f77eae3ba"
+lazy = true
+
+    [[debian-julia-python3-rootfs.download]]
+    sha256 = "58b03f624a1a5b1fb52c4d58a7be62df0bf74e26fa3c160cfe0e821adcc6f7de"
+    url = "https://github.com/staticfloat/Sandbox.jl/releases/download/julia-python3-77eae3ba/julia-python3.tar.gz"
