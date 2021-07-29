@@ -1,4 +1,4 @@
-module Sandbox # foo bar
+module Sandbox # hello world
 using Preferences, Scratch, LazyArtifacts, TOML, Libdl
 
 import Base: run, success
