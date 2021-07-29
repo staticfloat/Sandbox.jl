@@ -93,7 +93,8 @@ function build_docker_image(root_path::String, uid::Cint, gid::Cint; verbose::Bo
         open(`docker import - $(image_name)`, "w", verbose ? stdout : devnull) do io
             # we need to record permisions, so can't use Tar.jl
             cd(root_path) do
-                run(pipeline(`tar -c --owner=$(uid) --group=$(gid) .`, stdout=io))
+                tar = Sys.which("gtar") !== nothing ? "gtar" : "tar"
+                run(pipeline(`$(tar) -c --owner=$(uid) --group=$(gid) .`, stdout=io))
             end
         end
 
