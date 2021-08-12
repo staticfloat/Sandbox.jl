@@ -6,7 +6,7 @@ using Base.BinaryPlatforms
 Check that the `binfmt_misc` kernel module is loaded and enabled.
 """
 function check_binfmt_misc_loaded()
-    # If we're not running on Linux, just always return `false`
+    # If we're not running on Linux, then clearly `binfmt_misc` is not available
     if !Sys.islinux()
         return false
     end
@@ -23,8 +23,7 @@ function check_binfmt_misc_loaded()
     end
 
     # Finally, check that the module itself has not been disabled.
-    return true
-    #return strip(String(read("/proc/sys/fs/binfmt_misc/status"))) == "enabled"
+    return strip(String(read("/proc/sys/fs/binfmt_misc/status"))) == "enabled"
 end
 
 """
@@ -185,7 +184,7 @@ end
 Write a `binfmt_misc` registration out to the kernel's `register` file endpoint.
 Requires `sudo` privileges.
 """
-function write_binfmt_misc_registration(reg::BinFmtRegistration)
+function write_binfmt_misc_registration!(reg::BinFmtRegistration)
     try
         open(`$(sudo_cmd()) tee -a /proc/sys/fs/binfmt_misc/register`, write=true) do io
             write(io, register_string(reg))
@@ -196,37 +195,93 @@ function write_binfmt_misc_registration(reg::BinFmtRegistration)
     end
 end
 
-function clear_binfmt_misc_registrations()
+function clear_binfmt_misc_registrations!()
     open(`$(sudo_cmd()) tee -a /proc/sys/fs/binfmt_misc/status`, write=true) do io
         write(io, "-1")
     end
     return nothing
 end
 
+"""
+    register_requested_formats(formats::Vector{BinFmtRegistration})
+
+Given the list of `binfmt_misc` formats, check the currently-registered formats through
+`read_binfmt_misc_registrations()`, check to see if any in `formats` are not yet
+registered, and if they are not, call `write_binfmt_misc_registration!()` to register
+it with an artifact-sourced `qemu-*-static` binary.
+"""
+function register_requested_formats!(formats::Vector{BinFmtRegistration})
+    # Do nothing if we're not asking for any formats.
+    if isempty(formats)
+        return nothing
+    end
+
+    # Read in the current binfmt_misc registrations:
+    if !check_binfmt_misc_loaded()
+        error("Cannot provide multiarch support if `binfmt_misc` not loaded!")
+    end
+    regs = read_binfmt_misc_registrations()
+
+    # For each format, If there are no pre-existing registrations add it to `formats_to_register`
+    formats_to_register = BinFmtRegistration[]
+    for reg in formats
+        if !any(formats_match.(Ref(reg), regs))
+            push!(formats_to_register, BinFmtRegistration(
+                reg.name,
+                # We need to fetch our `multiarch-support` artifact, which has the necessary `qemu` executable.
+                @artifact_str("multiarch-support/$(reg.name)-static"),
+                reg.flags,
+                reg.offset,
+                reg.magic,
+                reg.mask,
+            ))
+        end
+    end
+
+    # Notify the user if we have any formats to register, then register them.
+    if !isempty(formats_to_register)
+        @info("Registering $(length(formats_to_register)) binfmt_misc entries, this may ask for your `sudo` password.", formats=[f.name for f in formats_to_register])
+        write_binfmt_misc_registration!.(formats_to_register)
+    end
+    return nothing
+end
+
+
+## binfmt_misc registration templates for various architectures.
+## Note that these are true no matter the host architecture; e.g. these
+## can just as easily point at `x86_64-qemu-aarch64-static` as `ppc64le-qemu-aarch64-static`.
+## In fact, the interpreter path typically gets overwritten in `build_executor_command` anyway.
+const qemu_aarch64 = BinFmtRegistration(
+    "qemu-aarch64",
+    "/usr/bin/qemu-aarch64-static",
+    "OFC",
+    0,
+    UInt8[0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0xb7, 0x00],
+    UInt8[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff],
+)
+const qemu_arm = BinFmtRegistration(
+    "qemu-arm",
+    "/usr/bin/qemu-arm-static",
+    "OFC",
+    0,
+    UInt8[0x7f, 0x45, 0x4c, 0x46, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x28, 0x00],
+    UInt8[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff],
+)
+const qemu_ppc64le = BinFmtRegistration(
+    "qemu-ppc64le",
+    "/usr/bin/qemu-ppc64le-static",
+    "OFC",
+    0,
+    UInt8[0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x15, 0x00],
+    UInt8[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfc, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0x00],
+)
+
 const platform_qemu_registrations = Dict(
-    Platform("aarch64", "linux") => BinFmtRegistration(
-        "qemu-aarch64",
-        "/usr/bin/qemu-aarch64-static",
-        "FC",
-        0,
-        UInt8[0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0xb7, 0x00],
-        UInt8[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff],
-    ),
-    Platform("armv7l", "linux") => BinFmtRegistration(
-        "qemu-arm",
-        "/usr/bin/qemu-arm-static",
-        "FC",
-        0,
-        UInt8[0x7f, 0x45, 0x4c, 0x46, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x28, 0x00],
-        UInt8[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff],
-    ),
-    Platform("ppc64le", "linux") => BinFmtRegistration(
-        "qemu-ppc64le",
-        # This is just a 
-        "/usr/bin/qemu-ppc64le-static",
-        "FC",
-        0,
-        UInt8[0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x15, 0x00],
-        UInt8[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfc, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0x00],
-    ),
+    # We register these `qemu-*-static` executables as capable of interpreting both `glibc` and `musl` platforms:
+    Platform("aarch64", "linux"; libc="glibc") => qemu_aarch64,
+    Platform("aarch64", "linux"; libc="musl") => qemu_aarch64,
+    Platform("armv7l", "linux"; libc="glibc") => qemu_arm,
+    Platform("armv7l", "linux"; libc="musl") => qemu_arm,
+    Platform("ppc64le", "linux"; libc="glibc") => qemu_ppc64le,
+    Platform("ppc64le", "linux"; libc="musl") => qemu_ppc64le,
 )

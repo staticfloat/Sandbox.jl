@@ -1,3 +1,4 @@
+using Base.BinaryPlatforms
 const AnyRedirectable = Union{Base.AbstractCmd, Base.TTY, <:IO}
 
 """
@@ -30,8 +31,11 @@ Sandbox executors require a configuration to set up the environment properly.
   - You cannot transfer persistent changes from one executor to another.
 
 - `multiarch`: Request multiarch executable support
-  - This is a boolean value, if set, it requires that the `binfmt_misc` kernel
-    module be installed and working.
+  - This is an array of `Platform` objects
+  - Sandbox will ensure that interpreters (such as `qemu-*-static` binaries) are
+    available for each platform.
+  - Requesting multiarch support for a platform that we don't support results in
+    an `ArgumentError`.
 
 - `uid` and `gid`: Numeric user and group identifiers to spawn the sandboxed process as.
   - By default, these are both `0`, signifying `root` inside the sandbox.
@@ -48,7 +52,7 @@ struct SandboxConfig
     entrypoint::Union{String,Nothing}
     pwd::String
     persist::Bool
-    multiarch::Bool
+    multiarch_formats::Vector{BinFmtRegistration}
     uid::Cint
     gid::Cint
 
@@ -63,7 +67,7 @@ struct SandboxConfig
                            entrypoint::Union{String,Nothing} = nothing,
                            pwd::String = "/",
                            persist::Bool = false,
-                           multiarch::Bool = false,
+                           multiarch::Vector{<:Platform} = Platform[],
                            uid::Integer=0,
                            gid::Integer=0,
                            stdin::AnyRedirectable = Base.devnull,
@@ -91,6 +95,18 @@ struct SandboxConfig
         if !haskey(read_only_maps, "/")
             throw(ArgumentError("Must provide a read-only root mapping!"))
         end
-        return new(read_only_maps, read_write_maps, env, entrypoint, pwd, persist, multiarch, Cint(uid), Cint(gid), stdin, stdout, stderr, verbose)
+
+        # Collect all multiarch platforms, mapping to the known interpreter for that platform.
+        multiarch_formats = Set{BinFmtRegistration}()
+        interp_platforms = collect(keys(platform_qemu_registrations))
+        for platform in multiarch
+            platform_idx = findfirst(p -> platforms_match(platform, p), interp_platforms)
+            if platform_idx === nothing
+                throw(ArgumentError("Platform $(triplet(platform)) unsupported for multiarch!"))
+            end
+            push!(multiarch_formats, platform_qemu_registrations[interp_platforms[platform_idx]])
+        end
+
+        return new(read_only_maps, read_write_maps, env, entrypoint, pwd, persist, collect(multiarch_formats), Cint(uid), Cint(gid), stdin, stdout, stderr, verbose)
     end
 end

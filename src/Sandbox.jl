@@ -39,11 +39,11 @@ that users instead make use of the `with_executor()` convenience function:
 """
 abstract type SandboxExecutor; end
 
-# Our SandboxConfig object, defining the environment sandboxed executions happen within
-include("SandboxConfig.jl")
-
 # Utilities to help with reading `binfmt_misc` entries in `/proc`
 include("binfmt_misc.jl")
+
+# Our SandboxConfig object, defining the environment sandboxed executions happen within
+include("SandboxConfig.jl")
 
 # Load the Docker executor
 include("Docker.jl")
