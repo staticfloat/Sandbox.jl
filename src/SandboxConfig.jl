@@ -29,6 +29,10 @@ Sandbox executors require a configuration to set up the environment properly.
     as the executor object itself.
   - You cannot transfer persistent changes from one executor to another.
 
+- `multiarch`: Request multiarch executable support
+  - This is a boolean value, if set, it requires that the `binfmt_misc` kernel
+    module be installed and working.
+
 - `uid` and `gid`: Numeric user and group identifiers to spawn the sandboxed process as.
   - By default, these are both `0`, signifying `root` inside the sandbox.
 
@@ -44,6 +48,7 @@ struct SandboxConfig
     entrypoint::Union{String,Nothing}
     pwd::String
     persist::Bool
+    multiarch::Bool
     uid::Cint
     gid::Cint
 
@@ -58,6 +63,7 @@ struct SandboxConfig
                            entrypoint::Union{String,Nothing} = nothing,
                            pwd::String = "/",
                            persist::Bool = false,
+                           multiarch::Bool = false,
                            uid::Integer=0,
                            gid::Integer=0,
                            stdin::AnyRedirectable = Base.devnull,
@@ -85,6 +91,6 @@ struct SandboxConfig
         if !haskey(read_only_maps, "/")
             throw(ArgumentError("Must provide a read-only root mapping!"))
         end
-        return new(read_only_maps, read_write_maps, env, entrypoint, pwd, persist, Cint(uid), Cint(gid), stdin, stdout, stderr, verbose)
+        return new(read_only_maps, read_write_maps, env, entrypoint, pwd, persist, multiarch, Cint(uid), Cint(gid), stdin, stdout, stderr, verbose)
     end
 end

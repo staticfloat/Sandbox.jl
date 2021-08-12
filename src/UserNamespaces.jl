@@ -98,8 +98,9 @@ function check_kernel_version(;verbose::Bool = false)
     return true
 end
 
+
+
 function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConfig, user_cmd::Cmd)
-    # Check to make sure that 
     # While we would usually prefer to use the `executable_product()` function to get a
     # `Cmd` object that has all of the `PATH` and `LD_LIBRARY_PATH` environment variables
     # set properly so that the executable product can be run, we are careful to ensure
@@ -144,6 +145,40 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
             exe.persistence_dir = mktempdir(persist_parent_dir)
         end
         append!(cmd_string, ["--persist", exe.persistence_dir])
+    end
+
+    # If we're requesting multiarch support be loaded in, check that binfmt_misc exists
+    if config.multiarch
+        if !check_binfmt_misc_loaded()
+            error("Cannot provide multiarch support if `binfmt_misc` not loaded!")
+        end
+
+        # Read in the current binfmt_misc registrations:
+        regs = read_binfmt_misc_registrations()
+
+        # Check for each of the platforms we have multiarch ability for:
+        formats_to_register = BinFmtRegistration[]
+        for (platform, reg) in platform_qemu_registrations
+            # If there are no pre-existing registrations for this format, add it to `formats_to_register`
+            if !any(formats_match.(Ref(reg), regs))
+                push!(formats_to_register, BinFmtRegistration(
+                    reg.name,
+                    # We need to fetch our `multiarch-support` artifact, which has the necessary `qemu` executable.
+                    @artifact_str("multiarch-support/$(reg.name)-static"),
+                    reg.flags,
+                    reg.offset,
+                    reg.magic,
+                    reg.mask,
+                ))
+            end
+        end
+
+        if !isempty(formats_to_register)
+            @info("Registering $(length(formats_to_register)) binfmt_misc entries, this may ask for your `sudo` password.", formats=[f.name for f in formats_to_register])
+            for reg in formats_to_register
+                write_binfmt_misc_registration(reg)
+            end
+        end
     end
 
     # Set the user and group, if requested
