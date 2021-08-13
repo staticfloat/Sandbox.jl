@@ -186,7 +186,7 @@ function sudo_cmd()
 
     if getuid() == 0
         # If we're already root, don't use any kind of sudo program
-        _sudo_cmd = [""]
+        _sudo_cmd = String[]
     elseif Sys.which("sudo") !== nothing success(`sudo -V`)
         # If `sudo` is available, use that
         _sudo_cmd = ["sudo"]
@@ -195,7 +195,7 @@ function sudo_cmd()
         _sudo_cmd = ["su", "root", "-c"]
     else
         @warn("No known sudo-like wrappers!")
-        _sudo_cmd = [""]
+        _sudo_cmd = String[]
     end
     return _sudo_cmd
 end
