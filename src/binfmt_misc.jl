@@ -178,6 +178,8 @@ function read_binfmt_misc_registrations()
     return registrations
 end
 
+sudo_tee(f::Function, path::String) = open(f, Cmd([sudo_cmd()..., "tee", "-a", path]), write=true)
+
 """
     write_binfmt_misc_registration(reg::BinFmtRegistration)
 
@@ -186,7 +188,7 @@ Requires `sudo` privileges.
 """
 function write_binfmt_misc_registration!(reg::BinFmtRegistration)
     try
-        open(`$(sudo_cmd()) tee -a /proc/sys/fs/binfmt_misc/register`, write=true) do io
+        sudo_tee("/proc/sys/fs/binfmt_misc/register") do io
             write(io, register_string(reg))
         end
     catch e
@@ -196,7 +198,7 @@ function write_binfmt_misc_registration!(reg::BinFmtRegistration)
 end
 
 function clear_binfmt_misc_registrations!()
-    open(`$(sudo_cmd()) tee -a /proc/sys/fs/binfmt_misc/status`, write=true) do io
+    sudo_tee("/proc/sys/fs/binfmt_misc/status") do io
         write(io, "-1")
     end
     return nothing
