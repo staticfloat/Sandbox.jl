@@ -185,7 +185,7 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
     # implemented with a virtual machine, we just trust the docker folks to have set up the
     # relevant `binfmt_misc` mappings properly.
     if Sys.islinux()
-        register_requested_formats!(config.multiarch_formats)
+        register_requested_formats!(config.multiarch_formats; verbose=config.verbose)
     end
 
     # Set the user and group
@@ -234,7 +234,7 @@ function export_docker_image(image_name::String,
     end
 
     # Get a container ID ready to be passed to `docker export`
-    container_id = readchomp(`docker create $(image_name)`)
+    container_id = readchomp(`docker create $(image_name) /bin/true`)
 
     # Get the ID of that container (since we can't export by label, sadly)
     if isempty(container_id)
@@ -248,7 +248,10 @@ function export_docker_image(image_name::String,
     try
         mkpath(output_dir)
         open(`docker export $(container_id)`) do tar_io
-            Tar.extract(tar_io, output_dir)
+            Tar.extract(tar_io, output_dir) do hdr
+                # Skip known troublesome files
+                return hdr.type ∉ (:chardev,)
+            end
         end
     finally
         run(`docker rm -f $(container_id)`)

@@ -2,8 +2,13 @@
 
 using Sandbox, Pkg.Artifacts, Scratch, SHA, ghr_jll
 
-image_name = "debian-julia-python3"
-run(`docker build -t $(image_name) $(@__DIR__)`)
+if isempty(ARGS)
+    println("Usage: julia --project build_docker_image.jl <dir>")
+    println("  Where <dir> is something like `debian-julia-python3`")
+end
+
+image_name = ARGS[1]
+run(`docker build -t $(image_name) $(image_name)`)
 
 artifact_hash = create_artifact() do dir
     @info("Building $(image_name)")
@@ -12,7 +17,7 @@ artifact_hash = create_artifact() do dir
 end
 
 # Write out to a file
-tarball_path = joinpath(@get_scratch!("archived"), "julia-python3.tar.gz")
+tarball_path = joinpath(@get_scratch!("archived"), "$(image_name).tar.gz")
 @info("Archiving out to $(tarball_path)")
 archive_artifact(artifact_hash, tarball_path)
 
@@ -28,7 +33,7 @@ run(`$(ghr_jll.ghr()) -replace $(tag_name) $(tarball_path)`)
 # Bind it into `Artifacts.toml`
 tarball_url = "https://github.com/staticfloat/Sandbox.jl/releases/download/$(tag_name)/$(basename(tarball_path))"
 bind_artifact!(
-    joinpath(dirname(dirname(@__DIR__)), "Artifacts.toml"),
+    joinpath(dirname(@__DIR__), "Artifacts.toml"),
     "$(image_name)-rootfs",
     artifact_hash;
     download_info=[(tarball_url, tarball_hash)],

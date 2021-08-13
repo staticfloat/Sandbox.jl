@@ -30,6 +30,29 @@ lazy = true
     sha256 = "846a3aa9350bf23ca1a2bd862c53eae12e5b570ac06f48242a047134cbba78f1"
     url = "https://github.com/staticfloat/Sandbox.jl/releases/download/julia-alpine-46e8be7e/julia_alpine.tar.gz"
 
-[multiarch-support]
+[multiarch-rootfs]
+git-tree-sha1 = "b9bc181be08c4a0598539af7ef93340778df527c"
+lazy = true
+
+    [[multiarch-rootfs.download]]
+    sha256 = "d88de5783becfc22cfd13dfa5ad965197f9bae2256e8ad89ff358adb2994b4c1"
+    url = "https://github.com/staticfloat/Sandbox.jl/releases/download/multiarch-78df527c/multiarch.tar.gz"
+
+[[multiarch-support]]
+arch = "x86_64"
 git-tree-sha1 = "378e2a4e3e4421d517f01b24f96f3eb2e3674774"
 lazy = true
+libc = "glibc"
+os = "linux"
+
+    [[multiarch-support.download]]
+    sha256 = "711afa233aa47132871dd0638ef94cb6329ca9c5bb397a9622e47b19a94e50c4"
+    url = "https://github.com/staticfloat/Sandbox.jl/releases/download/multiarch-support-e3674774/multiarch-support.tar.gz"
+
+[multiarch-testing]
+git-tree-sha1 = "88a9ec7a6394e96eae6304799ba03d6f65fee52d"
+lazy = true
+
+    [[multiarch-testing.download]]
+    sha256 = "32aa6559ff62b9114967614a1e8947d7e385f9aaf7daa99fb7a79e9972abebb9"
+    url = "https://github.com/staticfloat/Sandbox.jl/releases/download/multiarch-testing-65fee52d/multiarch-testing.tar.gz"

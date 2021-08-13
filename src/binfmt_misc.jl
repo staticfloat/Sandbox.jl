@@ -210,7 +210,7 @@ Given the list of `binfmt_misc` formats, check the currently-registered formats 
 registered, and if they are not, call `write_binfmt_misc_registration!()` to register
 it with an artifact-sourced `qemu-*-static` binary.
 """
-function register_requested_formats!(formats::Vector{BinFmtRegistration})
+function register_requested_formats!(formats::Vector{BinFmtRegistration}; verbose::Bool = false)
     # Do nothing if we're not asking for any formats.
     if isempty(formats)
         return nothing
@@ -240,7 +240,10 @@ function register_requested_formats!(formats::Vector{BinFmtRegistration})
 
     # Notify the user if we have any formats to register, then register them.
     if !isempty(formats_to_register)
-        @info("Registering $(length(formats_to_register)) binfmt_misc entries, this may ask for your `sudo` password.", formats=[f.name for f in formats_to_register])
+        if verbose
+            format_names = sort([f.name for f in formats_to_register])
+            @info("Registering $(length(formats_to_register)) binfmt_misc entries, this may ask for your `sudo` password.", formats=format_names)
+        end
         write_binfmt_misc_registration!.(formats_to_register)
     end
     return nothing
@@ -251,6 +254,22 @@ end
 ## Note that these are true no matter the host architecture; e.g. these
 ## can just as easily point at `x86_64-qemu-aarch64-static` as `ppc64le-qemu-aarch64-static`.
 ## In fact, the interpreter path typically gets overwritten in `build_executor_command` anyway.
+const qemu_x86_64 = BinFmtRegistration(
+    "qemu-x86_64",
+    "/usr/bin/qemu-x86_64-static",
+    "OFC",
+    0,
+    UInt8[0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x3e, 0x00],
+    UInt8[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff],
+)
+const qemu_i386 = BinFmtRegistration(
+    "qemu-i386",
+    "/usr/bin/qemu-i386-static",
+    "OFC",
+    0,
+    UInt8[0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x03, 0x00],
+    UInt8[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff],
+)
 const qemu_aarch64 = BinFmtRegistration(
     "qemu-aarch64",
     "/usr/bin/qemu-aarch64-static",
@@ -278,6 +297,10 @@ const qemu_ppc64le = BinFmtRegistration(
 
 const platform_qemu_registrations = Dict(
     # We register these `qemu-*-static` executables as capable of interpreting both `glibc` and `musl` platforms:
+    Platform("x86_64", "linux"; libc="glibc") => qemu_x86_64,
+    Platform("x86_64", "linux"; libc="musl") => qemu_x86_64,
+    Platform("i686", "linux"; libc="glibc") => qemu_i386,
+    Platform("i686", "linux"; libc="musl") => qemu_i386,
     Platform("aarch64", "linux"; libc="glibc") => qemu_aarch64,
     Platform("aarch64", "linux"; libc="musl") => qemu_aarch64,
     Platform("armv7l", "linux"; libc="glibc") => qemu_arm,
@@ -285,3 +308,15 @@ const platform_qemu_registrations = Dict(
     Platform("ppc64le", "linux"; libc="glibc") => qemu_ppc64le,
     Platform("ppc64le", "linux"; libc="musl") => qemu_ppc64le,
 )
+
+# Define what is a natively-runnable 
+const host_arch = arch(HostPlatform())
+function natively_runnable(p::Platform)
+    if host_arch == "x86_64"
+        return arch(p) ∈ ("x86_64", "i686")
+    end
+    if host_arch == "aarch64"
+        return arch(p) ∈ ("aarch64", "armv7l")
+    end
+    return host_arch == arch(p)
+end

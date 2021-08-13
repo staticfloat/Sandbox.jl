@@ -1,4 +1,5 @@
 # This is an example of how to create a rootfs image from a Dockerfile
+# Build this with `julia --project contrib/build_docker_images.jl debian-julia-python3`
 ARG JULIA_VERSION=1.6
 FROM julia:${JULIA_VERSION} as julia_container
 

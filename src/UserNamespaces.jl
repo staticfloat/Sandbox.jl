@@ -148,7 +148,7 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
     end
 
     # For each platform requested by `multiarch`, ensure its matching interpreter is registered.
-    register_requested_formats!(config.multiarch_formats)
+    register_requested_formats!(config.multiarch_formats; verbose=config.verbose)
 
     # Set the user and group, if requested
     append!(cmd_string, ["--uid", string(config.uid), "--gid", string(config.gid)])
