@@ -39,7 +39,7 @@ using Test, Sandbox, Base.BinaryPlatforms, LazyArtifacts
     if Sys.islinux()
         if !success(`sudo -k -n true`)
             @warn("Refusing test multiarch on a system without passwordless sudo!")
-            multiarch_executors = Sandbox.Executor[]
+            multiarch_executors = Sandbox.SandboxExecutor[]
         end
 
         # Otherwise, let's save the current set of binfmt_misc registrations
