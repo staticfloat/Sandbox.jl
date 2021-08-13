@@ -100,6 +100,11 @@ struct SandboxConfig
         multiarch_formats = Set{BinFmtRegistration}()
         interp_platforms = collect(keys(platform_qemu_registrations))
         for platform in multiarch
+            # If this platform is natively runnable, skip it
+            if natively_runnable(platform)
+                continue
+            end
+
             platform_idx = findfirst(p -> platforms_match(platform, p), interp_platforms)
             if platform_idx === nothing
                 throw(ArgumentError("Platform $(triplet(platform)) unsupported for multiarch!"))
