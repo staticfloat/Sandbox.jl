@@ -18,3 +18,7 @@ steps:
           codecov: true
     env:
       SANDBOX_BUILD_LOCAL_SANDBOX: "${LOCAL_SANDBOX}"
+      # Because `binfmt_misc` can't be manipulated within a sandbox, we
+      # just disable the `binfmt_misc` tests within nested sandbox environments,
+      # of which all buildkite agents are.
+      SANDBOX_TEST_MULTIARCH: false
