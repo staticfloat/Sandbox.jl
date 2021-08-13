@@ -56,25 +56,20 @@ for executor in all_executors
                 "DYLD_LIBRARY_PATH" => "you",
                 "SHELL" => "monster",
             )
-            generate_config = () -> begin
-                stdout = IOBuffer()
-                config = SandboxConfig(
-                    Dict("/" => rootfs_dir),
-                    Dict{String,String}(),
-                    env;
-                    stdout,
-                    )
-                return (; config, stdout)
-            end
+            stdout = IOBuffer()
+            config = SandboxConfig(
+                Dict("/" => rootfs_dir),
+                Dict{String,String}(),
+                env;
+                stdout,
+            )
             user_cmd = `/bin/sh -c "echo \$PATH \$LD_LIBRARY_PATH \$DYLD_LIBRARY_PATH \$SHELL"`
-            config, stdout = generate_config()
             with_executor(executor) do exe
                 @test success(exe, config, user_cmd)
                 @test String(take!(stdout)) == "for science you monster\n";
             end
 
             # Test that setting some environment onto `user_cmd` can override the `config` env:
-            config, stdout = generate_config()
             user_cmd = setenv(user_cmd, "DYLD_LIBRARY_PATH" => "my", "SHELL" => "friend")
             with_executor(executor) do exe
                 @test success(exe, config, user_cmd)
@@ -135,44 +130,34 @@ for executor in all_executors
                 read_write_dir = joinpath(dir, "read_write")
                 mkdir(read_only_dir)
                 mkdir(read_write_dir)
-
-                generate_config = () -> begin
-                    stdout = IOBuffer()
-                    stderr = IOBuffer()
-                    config = SandboxConfig(
-                        Dict("/" => rootfs_dir, "/read_only" => read_only_dir),
-                        Dict("/read_write" => read_write_dir),
-                        stdout = stdout,
-                        stderr = stderr,
-                        persist = false,
-                    )
-                    return (; config, stdout, stderr)
-                end
-
+                stdout = IOBuffer()
+                stderr = IOBuffer()
+                config = SandboxConfig(
+                    Dict("/" => rootfs_dir, "/read_only" => read_only_dir),
+                    Dict("/read_write" => read_write_dir),
+                    stdout = stdout,
+                    stderr = stderr,
+                    persist = false,
+                )
                 # Modifying the rootfs works, and is temporary; for docker containers this is modifying
                 # the rootfs image, for userns this is all mounted within an overlay backed by a tmpfs,
                 # because we have `persist` set to `false`.
                 with_executor(executor) do exe
-                    config, stdout, stderr = generate_config()
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`)
                     @test String(take!(stdout)) == "aperture\n";
                     @test print_if_nonempty(take!(stderr))
-                    config, stdout, stderr = generate_config()
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`)
                     @test String(take!(stdout)) == "aperture\n";
                     @test print_if_nonempty(take!(stderr))
 
                     # An actual read-only mount will not allow writing, because it's truly read-only
-                    config, stdout, stderr = generate_config()
                     @test !success(exe, config, ignorestatus(`/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`))
                     @test occursin("Read-only file system", String(take!(stderr)))
 
                     # A read-write mount, on the other hand, will be permanent
-                    config, stdout, stderr = generate_config()
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`)
                     @test String(take!(stdout)) == "aperture\n";
                     @test print_if_nonempty(take!(stderr))
-                    config, stdout, stderr = generate_config()
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`)
                     @test String(take!(stdout)) == "aperture\naperture\n";
                     @test print_if_nonempty(take!(stderr))
@@ -184,18 +169,14 @@ for executor in all_executors
             mktempdir() do dir
                 read_only_dir = joinpath(dir, "read_only")
                 mkdir(read_only_dir)
-
-                generate_config = () -> begin
-                    stdout = IOBuffer()
-                    stderr = IOBuffer()
-                    config = SandboxConfig(
-                        Dict("/" => rootfs_dir, "/read_only" => read_only_dir),
-                        entrypoint = "/read_only/entrypoint",
-                        stdout = stdout,
-                        stderr = stderr,
-                    )
-                    return (; config, stdout, stderr)
-                end
+                stdout = IOBuffer()
+                stderr = IOBuffer()
+                config = SandboxConfig(
+                    Dict("/" => rootfs_dir, "/read_only" => read_only_dir),
+                    entrypoint = "/read_only/entrypoint",
+                    stdout = stdout,
+                    stderr = stderr,
+                )
 
                 # Generate an `entrypoint` script that mounts a tmpfs-backed overlayfs over our read-only mounts
                 # Allowing us to write to those read-only mounts, but the changes are temporary
@@ -218,11 +199,9 @@ for executor in all_executors
 
                 # Modifying the read-only files now works, and is temporary
                 with_executor(executor) do exe
-                    config, stdout, stderr = generate_config()
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
                     @test String(take!(stdout)) == "entrypoint activated\naperture\n";
                     @test print_if_nonempty(take!(stderr))
-                    config, stdout, stderr = generate_config()
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
                     @test String(take!(stdout)) == "entrypoint activated\naperture\n";
                     @test print_if_nonempty(take!(stderr))
@@ -232,32 +211,26 @@ for executor in all_executors
 
         @testset "persistence" begin
             mktempdir() do dir
-                generate_config = () -> begin
-                    stdout = IOBuffer()
-                    stderr = IOBuffer()
-                    config = SandboxConfig(
-                        Dict("/" => rootfs_dir),
-                        stdout = stdout,
-                        stderr = stderr,
-                        persist = true,
-                    )
-                    return (; config, stdout, stderr)
-                end
+                stdout = IOBuffer()
+                stderr = IOBuffer()
+                config = SandboxConfig(
+                    Dict("/" => rootfs_dir),
+                    stdout = stdout,
+                    stderr = stderr,
+                    persist = true,
+                )
 
                 # Modifying the read-only files is persistent within a single executor
                 cmd = `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`
                 with_executor(executor) do exe
-                    config, stdout, stderr = generate_config()
                     @test success(exe, config, cmd)
                     @test String(take!(stdout)) == "aperture\n";
                     @test print_if_nonempty(take!(stderr))
-                    config, stdout, stderr = generate_config()
                     @test success(exe, config, cmd)
                     @test String(take!(stdout)) == "aperture\naperture\n";
                     @test print_if_nonempty(take!(stderr))
                 end
 
-                config, stdout, stderr = generate_config()
                 with_executor(executor) do exe
                     @test success(exe, config, cmd)
                     @test String(take!(stdout)) == "aperture\n";

@@ -116,12 +116,25 @@ warn_priviledged(::SandboxExecutor) = nothing
 for f in (:run, :success)
     @eval begin
         function $f(exe::SandboxExecutor, config::SandboxConfig, user_cmd::Cmd; kwargs...)
-            cmd = pipeline(build_executor_command(exe, config, user_cmd); config.stdin, config.stdout, config.stderr)
+            # Because Julia 1.8+ closes IOBuffers like `stdout` and `stderr`, we create temporary
+            # IOBuffers that get copied over to the persistent `stdin`/`stdout` after the run is complete.
+            temp_stdout = isa(config.stdout, IOBuffer) ? IOBuffer() : config.stdout
+            temp_stderr = isa(config.stderr, IOBuffer) ? IOBuffer() : config.stderr
+            cmd = pipeline(build_executor_command(exe, config, user_cmd); config.stdin, stdout=temp_stdout, stderr=temp_stderr)
             if config.verbose
                 @info("Running sandboxed command", user_cmd.exec)
             end
             warn_priviledged(exe)
-            return $f(cmd; kwargs...)
+            ret = $f(cmd; kwargs...)
+
+            # If we were using temporary IOBuffers, write the result out to `config.std{out,err}`
+            if isa(temp_stdout, IOBuffer)
+                write(config.stdout, take!(temp_stdout))
+            end
+            if isa(temp_stderr, IOBuffer)
+                write(config.stderr, take!(temp_stderr))
+            end
+            return ret
         end
     end
 end
