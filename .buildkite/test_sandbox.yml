@@ -1,6 +1,6 @@
 # Only run on agents that are using sandbox.jl
 agents:
-  queue: "testing"
+  queue: "julia"
   sandbox.jl: "true"
 
 steps:
