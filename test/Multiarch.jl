@@ -35,10 +35,13 @@ using Test, Sandbox, Base.BinaryPlatforms, LazyArtifacts
     multiarch_executors = filter(executor_available, Sandbox.all_executors)
     old_binfmt_misc_regs = nothing
 
-    # On Linux, we need passwordless sudo to be able to register things
-    if Sys.islinux()
+    if get(ENV, "SANDBOX_TEST_MULTIARCH", "true") != "true"
+        @warn("Refusing to test multiarch because SANDBOX_TEST_MULTIARCH set to $(ENV["SANDBOX_TEST_MULTIARCH"])")
+        multiarch_executors = Sandbox.SandboxExecutor[]
+    elseif Sys.islinux()
+        # On Linux, we need passwordless sudo to be able to register things
         if !success(`sudo -k -n true`)
-            @warn("Refusing test multiarch on a system without passwordless sudo!")
+            @warn("Refusing to test multiarch on a system without passwordless sudo!")
             multiarch_executors = Sandbox.SandboxExecutor[]
         end
 
@@ -88,7 +91,7 @@ using Test, Sandbox, Base.BinaryPlatforms, LazyArtifacts
         end
     end
 
-    if old_binfmt_misc_regs !== nothing
+    if old_binfmt_misc_regs !== nothing && !isempty(old_binfmt_misc_regs)
         # Restore old binfmt_misc registrations so that our test suite isn't clobbering things for others
         Sandbox.clear_binfmt_misc_registrations!()
         Sandbox.write_binfmt_misc_registration!.(old_binfmt_misc_regs)
