@@ -1,4 +1,5 @@
 using Random, Tar
+import Tar_jll
 
 Base.@kwdef struct DockerExecutor <: SandboxExecutor
     label::String = Random.randstring(10)
@@ -91,9 +92,17 @@ function build_docker_image(root_path::String, uid::Cint, gid::Cint; verbose::Bo
 
         # Build the docker image
         open(`docker import - $(image_name)`, "w", verbose ? stdout : devnull) do io
-            # we need to record permisions, so can't use Tar.jl
+            # We need to record permissions, and therefore we cannot use Tar.jl.
+            # Some systems (e.g. macOS) ship with a BSD tar that does not support the
+            # `--owner` and `--group` command-line options. Therefore, if Tar_jll is
+            # available, we use the GNU tar provided by Tar_jll. If Tar_jll is not available,
+            # we fall back to the system tar.
             cd(root_path) do
-                run(pipeline(`tar -c --owner=$(uid) --group=$(gid) .`, stdout=io))
+            # tar = Tar_jll.is_available() ? Tar_jll.tar() : `tar`
+            # run(pipeline(`$(tar) -c --owner=$(uid) --group=$(gid) .`, stdout=io))
+            Tar_jll.tar() do tar
+                run(pipeline(`$(tar) -c --owner=$(uid) --group=$(gid) .`, stdout=io))
+            end
             end
         end
 
