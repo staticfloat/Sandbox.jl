@@ -154,11 +154,11 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
     append!(cmd_string, ["--uid", string(config.uid), "--gid", string(config.gid)])
 
     # If we're running in privileged mode, we need to add `sudo` (or `su`, if `sudo` doesn't exist)
-    if isa(exe, PrivilegedUserNamespacesExecutor) && getuid() != 0
+    if isa(exe, PrivilegedUserNamespacesExecutor)
         # Next, prefer `sudo`, but allow fallback to `su`. Also, force-set our
         # environmental mappings with sudo, because many of these are often  lost
         # and forgotten due to `sudo` restrictions on setting `LD_LIBRARY_PATH`, etc...
-        if sudo_cmd()[1] == "sudo"
+        if get(sudo_cmd(), 1, "") == "sudo"
             sudo_envs = vcat([["-E", "$k=$(config.env[k])"] for k in keys(config.env)]...)
             if user_cmd.env !== nothing
                 append!(sudo_envs, vcat([["-E", pair] for pair in user_cmd.env]...))
