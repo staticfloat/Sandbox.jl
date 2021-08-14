@@ -410,7 +410,8 @@ static void mount_the_world(const char * root_dir,
                             struct map_list * shard_maps,
                             struct map_list * workspaces,
                             uid_t uid, gid_t gid,
-                            const char * persist_dir) {
+                            const char * persist_dir,
+                            const char * tmpfs_size) {
   // If `persist_dir` is specified, it represents a host directory that should
   // be used to store our overlayfs work data.  This is where modifications to
   // the rootfs and such will go.  Typically, these should be ephemeral (and if
@@ -431,7 +432,10 @@ static void mount_the_world(const char * root_dir,
     // Create tmpfs to store ephemeral changes.  These changes are lost once
     // the `tmpfs` is unmounted, which occurs when all processes within the
     // namespace exit and the mount namespace is destroyed.
-    check(0 == mount("tmpfs", "/proc", "tmpfs", 0, "size=1G"));
+    char * options = NULL;
+    check(0 < asprintf(&options, "size=%s", tmpfs_size));
+    check(0 == mount("tmpfs", "/proc", "tmpfs", 0, options));
+    free(options);
   }
 
   if (verbose) {
@@ -612,6 +616,8 @@ int main(int sandbox_argc, char **sandbox_argv) {
   uid_t dst_uid = 0;
   gid_t dst_gid = 0;
 
+  char * tmpfs_size = "1G"; // default value if the `--tmpfs-size` option is not provided
+
   // Parse out options
   while(1) {
     static struct option long_options[] = {
@@ -625,6 +631,7 @@ int main(int sandbox_argc, char **sandbox_argv) {
       {"map",        required_argument, NULL, 'm'},
       {"uid",        required_argument, NULL, 'u'},
       {"gid",        required_argument, NULL, 'g'},
+      {"tmpfs-size", required_argument, NULL, 't'},
       {0, 0, 0, 0}
     };
 
@@ -721,6 +728,12 @@ int main(int sandbox_argc, char **sandbox_argv) {
       case 'e':
         entrypoint = strdup(optarg);
         break;
+      case 't':
+        tmpfs_size = strdup(optarg);
+        if (verbose) {
+          fprintf(stderr, "Parsed --tmpfs-size as \"%s\"\n", tmpfs_size);
+        }
+        break;
       default:
         fputs("getoptlong defaulted?!\n", stderr);
         return 1;
@@ -776,7 +789,7 @@ int main(int sandbox_argc, char **sandbox_argv) {
 
     // Mount the rootfs, shards, and workspace.  We do this here because, on this machine,
     // we may not have permissions to mount overlayfs within user namespaces.
-    mount_the_world(sandbox_root, maps, workspaces, uid, gid, persist_dir);
+    mount_the_world(sandbox_root, maps, workspaces, uid, gid, persist_dir, tmpfs_size);
   }
 
   // We want to request a new PID space, a new mount space, and a new user space
@@ -817,7 +830,7 @@ int main(int sandbox_argc, char **sandbox_argv) {
     } else if (execution_mode == UNPRIVILEGED_CONTAINER_MODE) {
       // If we're in unprivileged container mode, mount the world now that we
       // have supreme cosmic power.
-      mount_the_world(sandbox_root, maps, workspaces, dst_uid, dst_gid, persist_dir);
+      mount_the_world(sandbox_root, maps, workspaces, dst_uid, dst_gid, persist_dir, tmpfs_size);
     }
 
     // Finally, we begin invocation of the target program.
