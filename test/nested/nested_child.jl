@@ -12,6 +12,7 @@ for element in readdir(original_app_directory)
     cp(old_path, new_path; force = true)
 end
 rm.(joinpath.(Ref(new_app_directory), Base.manifest_names); force = true)
+ENV["JULIA_PKG_SERVER"] = ""
 using Pkg
 Pkg.activate(new_app_directory)
 Pkg.instantiate()
