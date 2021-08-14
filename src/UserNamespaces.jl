@@ -73,15 +73,13 @@ end
 
 function check_kernel_version(;verbose::Bool = false)
     # Don't bother to do anything on non-Linux
-    if !Sys.islinux()
-        return true
-    end
+    Sys.islinux() || return false
     kernel_version = get_kernel_version()
 
     # If we were unable to parse any part of the version number, then warn and exit.
     if kernel_version === nothing
-        @warn("Unable to check version number; assuming kernel version >= 3.18")
-        return true
+        @warn("Unable to check version number")
+        return false
     end
 
     # Otherwise, we have a kernel version and if it's too old, we should freak out.
