@@ -73,7 +73,9 @@ end
 
 function check_kernel_version(;verbose::Bool = false)
     # Don't bother to do anything on non-Linux
-    Sys.islinux() || return false
+    if !Sys.islinux()
+        return false
+    end
     kernel_version = get_kernel_version()
 
     # If we were unable to parse any part of the version number, then warn and exit.
