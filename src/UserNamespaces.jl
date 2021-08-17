@@ -153,6 +153,11 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
     # Set the user and group, if requested
     append!(cmd_string, ["--uid", string(config.uid), "--gid", string(config.gid)])
 
+    # Set the custom tmpfs_size, if requested
+    if config.tmpfs_size !== nothing
+        append!(cmd_string, ["--tmpfs-size", config.tmpfs_size])
+    end
+
     # If we're running in privileged mode, we need to add `sudo` (or `su`, if `sudo` doesn't exist)
     if isa(exe, PrivilegedUserNamespacesExecutor)
         # Next, prefer `sudo`, but allow fallback to `su`. Also, force-set our

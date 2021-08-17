@@ -13,6 +13,29 @@ if executor_available(UnprivilegedUserNamespacesExecutor)
             end
         end
     end
+    @testset "Customize the tempfs size" begin
+        rootfs_dir = Sandbox.alpine_rootfs()
+        read_only_maps = Dict("/" => rootfs_dir)
+        read_write_maps = Dict{String, String}()
+        env = Dict(
+            "PATH" => "/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin",
+            "HOME" => "/home/juliaci",
+            "USER" => "juliaci",
+        )
+        cmd = `/bin/sh -c "mkdir -p /home/juliaci && cd /home/juliaci && dd if=/dev/urandom of=sample.txt bs=50M count=1"`
+        @testset "tempfs is big enough" begin
+            config = SandboxConfig(read_only_maps, read_write_maps, env; tmpfs_size = "1G")
+            with_executor(UnprivilegedUserNamespacesExecutor) do exe
+                @test success(exe, config, cmd)
+            end
+        end
+        @testset "tempfs is too small" begin
+            config = SandboxConfig(read_only_maps, read_write_maps, env; tmpfs_size = "10M")
+            with_executor(UnprivilegedUserNamespacesExecutor) do exe
+                @test !success(exe, config, cmd)
+            end
+        end
+    end
 else
     @error("Skipping Unprivileged tests, as it does not seem to be available")
 end
