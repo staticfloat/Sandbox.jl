@@ -9,7 +9,7 @@ on:
 
 jobs:
   test:
-    name: ${{ matrix.julia-version }}/${{ matrix.julia-arch }}/build-local-sandbox=${{ matrix.build-local-sandbox }}
+    name: Julia ${{ matrix.julia-version }} ${{ matrix.julia-arch }} build_local=${{ matrix.build-local-sandbox }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
