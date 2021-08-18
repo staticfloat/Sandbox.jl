@@ -1,4 +1,4 @@
-/* Copyright (c) 2017 Julia Computing Inc */
+/* Copyright (c) 2017 Julia Computing Inc and contributors */
 #define _GNU_SOURCE
 
 /*
