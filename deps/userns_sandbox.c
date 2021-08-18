@@ -432,10 +432,11 @@ static void mount_the_world(const char * root_dir,
     // Create tmpfs to store ephemeral changes.  These changes are lost once
     // the `tmpfs` is unmounted, which occurs when all processes within the
     // namespace exit and the mount namespace is destroyed.
-    char * options = NULL;
-    check(0 < asprintf(&options, "size=%s", tmpfs_size));
+    char options[32];
+    int n = snprintf(options, 32, "size=%s", tmpfs_size);
+    check(0 < n);
+    check(n < 31);
     check(0 == mount("tmpfs", "/proc", "tmpfs", 0, options));
-    free(options);
   }
 
   if (verbose) {
