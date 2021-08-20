@@ -103,13 +103,9 @@ function preferred_executor(;verbose::Bool = false)
 end
 
 # Helper function for warning about privileged execution trying to invoke `sudo`
-prompted_userns_privileged = false
 function warn_priviledged(::PrivilegedUserNamespacesExecutor)
-    global prompted_userns_privileged
-    if !prompted_userns_privileged
-        @info("Running privileged container via `sudo`, may ask for your password:")
-        prompted_userns_privileged = true
-    end
+    @info("Running privileged container via `sudo`, may ask for your password:", maxlog=1)
+    return nothing
 end
 warn_priviledged(::SandboxExecutor) = nothing
 

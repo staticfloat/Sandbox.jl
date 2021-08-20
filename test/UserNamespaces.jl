@@ -44,7 +44,7 @@ end
 if success(`sudo -k -n true`)
     if executor_available(PrivilegedUserNamespacesExecutor)
         @testset "PrivilegedUserNamespacesExecutor" begin
-            @test_logs (:info, "Testing Privileged User Namespaces Executor (read-only, read-write)") begin
+            @test_logs (:info, "Testing Privileged User Namespaces Executor (read-only, read-write)") match_mode=:any begin
                 with_executor(PrivilegedUserNamespacesExecutor) do exe
                     @test probe_executor(exe; test_read_only_map=true, test_read_write_map=true, verbose=true)
                 end
