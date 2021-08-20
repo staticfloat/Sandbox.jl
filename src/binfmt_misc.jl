@@ -135,7 +135,7 @@ function BinFmtRegistration(file::String)
     if !enabled
         return nothing
     end
-    
+
     return BinFmtRegistration(basename(file), interpreter, flags, offset, magic, mask)
 end
 
@@ -242,9 +242,12 @@ function register_requested_formats!(formats::Vector{BinFmtRegistration}; verbos
 
     # Notify the user if we have any formats to register, then register them.
     if !isempty(formats_to_register)
+        format_names = sort([f.name for f in formats_to_register])
+        msg = "Registering $(length(formats_to_register)) binfmt_misc entries, this may ask for your `sudo` password."
         if verbose
-            format_names = sort([f.name for f in formats_to_register])
-            @info("Registering $(length(formats_to_register)) binfmt_misc entries, this may ask for your `sudo` password.", formats=format_names)
+            @info(msg, formats=format_names)
+        else
+            @info(msg)
         end
         write_binfmt_misc_registration!.(formats_to_register)
     end
@@ -311,7 +314,7 @@ const platform_qemu_registrations = Dict(
     Platform("ppc64le", "linux"; libc="musl") => qemu_ppc64le,
 )
 
-# Define what is a natively-runnable 
+# Define what is a natively-runnable
 const host_arch = arch(HostPlatform())
 function natively_runnable(p::Platform)
     if host_arch == "x86_64"
