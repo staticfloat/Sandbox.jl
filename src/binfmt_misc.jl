@@ -246,6 +246,8 @@ function register_requested_formats!(formats::Vector{BinFmtRegistration}; verbos
         msg = "Registering $(length(formats_to_register)) binfmt_misc entries, this may ask for your `sudo` password."
         if verbose
             @info(msg, formats=format_names)
+        elseif (Sys.which("sudo") !== nothing) && (success(`sudo -k -n true`))
+            # in this case, we know that `sudo` will not prompt the user for a password
         else
             @info(msg)
         end
