@@ -67,6 +67,7 @@ function executor_available(::Type{T}; verbose::Bool=false) where {T <: UserName
     end
     return with_executor(T) do exe
         return check_kernel_version(;verbose) &&
+               check_overlayfs_loaded(;verbose) &&
                probe_executor(exe; test_read_only_map=true, test_read_write_map=true, verbose)
     end
 end
@@ -98,7 +99,31 @@ function check_kernel_version(;verbose::Bool = false)
     return true
 end
 
+function check_overlayfs_loaded(;verbose::Bool = false)
+    if !Sys.islinux()
+        return false
+    end
 
+    mods = get_loaded_modules()
+    if verbose
+        @info("Found $(length(mods)) loaded modules")
+    end
+
+    filter!(mods) do (name, size, count, deps, state, addr)
+        return name == "overlay"
+    end
+    if isempty(mods)
+        if verbose
+            @warn("Could not find loaded `overlay` module, try `sudo modprobe overlay`?")
+        end
+        return false
+    end
+
+    if verbose
+        @info("Found loaded `overlay` module")
+    end
+    return true
+end
 
 function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConfig, user_cmd::Cmd)
     # While we would usually prefer to use the `executable_product()` function to get a
