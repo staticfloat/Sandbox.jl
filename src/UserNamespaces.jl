@@ -87,9 +87,7 @@ function check_kernel_version(;verbose::Bool = false)
 
     # Otherwise, we have a kernel version and if it's too old, we should freak out.
     if kernel_version < v"3.18"
-        if verbose
-            @warn("Kernel version too old: detected $(kernel_version), need at least 3.18!")
-        end
+        @warn("Kernel version too old: detected $(kernel_version), need at least 3.18!")
         return false
     end
 
@@ -113,9 +111,7 @@ function check_overlayfs_loaded(;verbose::Bool = false)
         return name == "overlay"
     end
     if isempty(mods)
-        if verbose
-            @warn("Could not find loaded `overlay` module, try `sudo modprobe overlay`?")
-        end
+        @warn("Could not find loaded `overlay` module, try `sudo modprobe overlay`?")
         return false
     end
 
