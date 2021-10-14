@@ -102,6 +102,11 @@ function check_overlayfs_loaded(;verbose::Bool = false)
         return false
     end
 
+    # If the user has disabled this check, return `true`
+    if parse(Bool, get(ENV, "SANDBOX_SKIP_OVERLAYFS_CHECK", "false"))
+        return true
+    end
+
     mods = get_loaded_modules()
     if verbose
         @info("Found $(length(mods)) loaded modules")
@@ -111,7 +116,7 @@ function check_overlayfs_loaded(;verbose::Bool = false)
         return name == "overlay"
     end
     if isempty(mods)
-        @warn("Could not find loaded `overlay` module, try `sudo modprobe overlay`?")
+        @warn("Could not find loaded `overlay` module, try `sudo modprobe overlay` or export SANDBOX_SKIP_OVERLAYFS_CHECK=true to disable this check!")
         return false
     end
 
