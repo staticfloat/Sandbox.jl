@@ -300,7 +300,7 @@ static void bind_mount(const char *src, const char *dest, char read_only) {
     }
   }
 
-  if (resolved_src[0] == NULL) {
+  if (resolved_src[0] == '\0') {
     strncpy(resolved_src, src, PATH_MAX);
   }
 
