@@ -43,6 +43,8 @@ Sandbox executors require a configuration to set up the environment properly.
 - `stdin`, `stdout`, `stderr`: input/output streams for the sandboxed process.
   - Can be any kind of `IO`, `TTY`, `devnull`, etc...
 
+- `hostname`: Set the hostname within the sandbox, defaults to the current hostname
+
 - `verbose`: Set whether the sandbox construction process should be more or less verbose.
 """
 struct SandboxConfig
@@ -56,6 +58,7 @@ struct SandboxConfig
     uid::Cint
     gid::Cint
     tmpfs_size::Union{String, Nothing}
+    hostname::Union{String, Nothing}
 
     stdin::AnyRedirectable
     stdout::AnyRedirectable
@@ -72,6 +75,7 @@ struct SandboxConfig
                            uid::Integer=0,
                            gid::Integer=0,
                            tmpfs_size::Union{String, Nothing}=nothing,
+                           hostname::Union{String, Nothing}=nothing,
                            stdin::AnyRedirectable = Base.devnull,
                            stdout::AnyRedirectable = Base.stdout,
                            stderr::AnyRedirectable = Base.stderr,
@@ -114,6 +118,6 @@ struct SandboxConfig
             push!(multiarch_formats, platform_qemu_registrations[interp_platforms[platform_idx]])
         end
 
-        return new(read_only_maps, read_write_maps, env, entrypoint, pwd, persist, collect(multiarch_formats), Cint(uid), Cint(gid), tmpfs_size, stdin, stdout, stderr, verbose)
+        return new(read_only_maps, read_write_maps, env, entrypoint, pwd, persist, collect(multiarch_formats), Cint(uid), Cint(gid), tmpfs_size, hostname, stdin, stdout, stderr, verbose)
     end
 end

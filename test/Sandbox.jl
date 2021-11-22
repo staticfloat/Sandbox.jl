@@ -280,6 +280,20 @@ for executor in all_executors
             end
         end
 
+        @testset "hostname" begin
+            stdout = IOBuffer()
+
+            config = SandboxConfig(
+                Dict("/" => rootfs_dir);
+                stdout,
+                hostname="sandy",
+            )
+            with_executor(executor) do exe
+                @test success(exe, config, `/bin/uname -n`)
+                @test chomp(String(take!(stdout))) == "sandy"
+            end
+        end
+
         @testset "Internet access" begin
             mktempdir() do rw_dir
                 ro_mappings = Dict(
