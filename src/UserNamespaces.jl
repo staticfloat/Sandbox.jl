@@ -184,6 +184,10 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
         append!(cmd_string, ["--tmpfs-size", config.tmpfs_size])
     end
 
+    if config.hostname !== nothing
+        append!(cmd_string, ["--hostname", config.hostname])
+    end
+
     # If we're running in privileged mode, we need to add `sudo` (or `su`, if `sudo` doesn't exist)
     if isa(exe, PrivilegedUserNamespacesExecutor)
         # Next, prefer `sudo`, but allow fallback to `su`. Also, force-set our

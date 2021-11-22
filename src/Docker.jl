@@ -189,6 +189,10 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
         append!(cmd_string, ["--entrypoint", config.entrypoint])
     end
 
+    if config.hostname !== nothing
+        append!(cmd_string, ["--hostname", config.hostname])
+    end
+
     # For each platform requested by `multiarch`, ensure its matching interpreter is registered,
     # but only if we're on Linux.  If we're on some other platform, like macOS where Docker is
     # implemented with a virtual machine, we just trust the docker folks to have set up the

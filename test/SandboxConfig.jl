@@ -14,6 +14,7 @@ using Test, LazyArtifacts, Sandbox
         @test config.stdin == Base.devnull
         @test config.stdout == Base.stdout
         @test config.stderr == Base.stderr
+        @test config.hostname === nothing
     end
 
     @testset "full options" begin
@@ -33,7 +34,8 @@ using Test, LazyArtifacts, Sandbox
             persist = true,
             stdin = Base.stdout,
             stdout = stdout,
-            stderr = Base.devnull
+            stderr = Base.devnull,
+            hostname="sandy",
         )
         @test config.read_only_maps["/"] == rootfs_dir
         @test config.read_only_maps["/lib"] == "/lib"
@@ -45,6 +47,7 @@ using Test, LazyArtifacts, Sandbox
         @test config.stdin == Base.stdout
         @test config.stdout == stdout
         @test config.stderr == Base.devnull
+        @test config.hostname == "sandy"
     end
 
     @testset "errors" begin

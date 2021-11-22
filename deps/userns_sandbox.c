@@ -571,6 +571,7 @@ int main(int sandbox_argc, char **sandbox_argv) {
   int status = 0;
   pid_t pgrp = getpgid(0);
   char * entrypoint = NULL;
+  const char * hostname = NULL;
 
   // First, determine our execution mode based on pid and euid (allowing for override)
   const char * forced_mode = getenv("FORCE_SANDBOX_MODE");
@@ -633,6 +634,7 @@ int main(int sandbox_argc, char **sandbox_argv) {
       {"uid",        required_argument, NULL, 'u'},
       {"gid",        required_argument, NULL, 'g'},
       {"tmpfs-size", required_argument, NULL, 't'},
+      {"hostname",   required_argument, NULL, 'H'},
       {0, 0, 0, 0}
     };
 
@@ -735,6 +737,9 @@ int main(int sandbox_argc, char **sandbox_argv) {
           fprintf(stderr, "Parsed --tmpfs-size as \"%s\"\n", tmpfs_size);
         }
         break;
+      case 'H':
+        hostname = strdup(optarg);
+        break;
       default:
         fputs("getoptlong defaulted?!\n", stderr);
         return 1;
@@ -794,7 +799,7 @@ int main(int sandbox_argc, char **sandbox_argv) {
   }
 
   // We want to request a new PID space, a new mount space, and a new user space
-  int clone_flags = CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUSER | SIGCHLD;
+  int clone_flags = CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUSER | CLONE_NEWUTS | SIGCHLD;
   if ((pid = syscall(SYS_clone, clone_flags, 0, 0, 0, 0)) == 0) {
     // If we're in here, we have become the "child" process, within the container.
 
@@ -832,6 +837,11 @@ int main(int sandbox_argc, char **sandbox_argv) {
       // If we're in unprivileged container mode, mount the world now that we
       // have supreme cosmic power.
       mount_the_world(sandbox_root, maps, workspaces, dst_uid, dst_gid, persist_dir, tmpfs_size);
+    }
+
+    // Set the hostname, if that's been requested
+    if (hostname != NULL) {
+        check(sethostname(hostname, strlen(hostname)) == 0);
     }
 
     // Finally, we begin invocation of the target program.
