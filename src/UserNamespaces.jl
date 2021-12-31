@@ -200,20 +200,22 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
         end
     end
 
-    # Finally, append the user-requested command string
-    push!(cmd_string, "--")
-    append!(cmd_string, user_cmd.exec)
-
-    # Construct a `Cmd` object off of those, with the SandboxConfig's env (if this is an unprivileged runner):
-    sandbox_cmd = setenv(Cmd(cmd_string), String[])
-    if isa(exe, UnprivilegedUserNamespacesExecutor)
-        sandbox_cmd = setenv(sandbox_cmd, config.env)
-
-        # If the user has provided an environment with their command, merge that in as well
-        if user_cmd.env !== nothing
-            sandbox_cmd = addenv(sandbox_cmd, user_cmd.env)
+    # Determine the environment variables that will need to be set in the container
+    env = copy(config.env)
+    if user_cmd.env !== nothing
+        for var_val in user_cmd.env
+            var, val = split(var_val, '='; limit=2)
+            env[var] = val
         end
     end
+    for (var, val) in env
+        append!(cmd_string, ["--env", "$(var)=$(val)"])
+    end
+
+    # Finally, append the user-requested command string and merge everything into a Cmd
+    push!(cmd_string, "--")
+    append!(cmd_string, user_cmd.exec)
+    sandbox_cmd = Cmd(cmd_string)
 
     # If the user has asked that this command be allowed to fail silently, pass that on
     if user_cmd.ignorestatus

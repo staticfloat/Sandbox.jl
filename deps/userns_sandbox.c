@@ -78,6 +78,7 @@ Then run it, mounting in a rootfs with a workspace and no other read-only maps:
 /**** Global Variables ***/
 #define TRUE 1
 #define FALSE 0
+#define MAX_ENV_VARS 32
 
 // sandbox_root is the location of the rootfs on disk.  This is required.
 char *sandbox_root = NULL;
@@ -474,7 +475,7 @@ static void mount_the_world(const char * root_dir,
 /*
  * Sets up the chroot jail, then executes the target executable.
  */
-static int sandbox_main(const char * root_dir, const char * new_cd, int sandbox_argc, char **sandbox_argv) {
+static int sandbox_main(const char * root_dir, const char * new_cd, int sandbox_argc, char **sandbox_argv, char** sandbox_env) {
   pid_t pid;
   int status;
 
@@ -521,7 +522,7 @@ static int sandbox_main(const char * root_dir, const char * new_cd, int sandbox_
       }
       fprintf(stderr, "\n");
     }
-    execve(sandbox_argv[0], sandbox_argv, environ);
+    execve(sandbox_argv[0], sandbox_argv, sandbox_env);
     fprintf(stderr, "ERROR: Failed to run %s: %d (%s)\n", sandbox_argv[0], errno, strerror(errno));
 
     // Flush to make sure we've said all we're going to before we _exit()
@@ -619,6 +620,10 @@ int main(int sandbox_argc, char **sandbox_argv) {
 
   char * tmpfs_size = "1G"; // default value if the `--tmpfs-size` option is not provided
 
+  char *sandbox_env[MAX_ENV_VARS+1];
+  int sandbox_env_vars=0;
+  memset(sandbox_env, 0, sizeof(sandbox_env));
+
   // Parse out options
   while(1) {
     static struct option long_options[] = {
@@ -633,6 +638,7 @@ int main(int sandbox_argc, char **sandbox_argv) {
       {"uid",        required_argument, NULL, 'u'},
       {"gid",        required_argument, NULL, 'g'},
       {"tmpfs-size", required_argument, NULL, 't'},
+      {"env",        required_argument, NULL, 'n'},
       {0, 0, 0, 0}
     };
 
@@ -735,6 +741,13 @@ int main(int sandbox_argc, char **sandbox_argv) {
           fprintf(stderr, "Parsed --tmpfs-size as \"%s\"\n", tmpfs_size);
         }
         break;
+      case 'n':
+        if (sandbox_env_vars > MAX_ENV_VARS) {
+          fprintf(stderr, "ERROR: Too many environment variables!  Max is %d\n", MAX_ENV_VARS);
+          return 1;
+        }
+        sandbox_env[sandbox_env_vars++] = strdup(optarg);
+        break;
       default:
         fputs("getoptlong defaulted?!\n", stderr);
         return 1;
@@ -835,7 +848,7 @@ int main(int sandbox_argc, char **sandbox_argv) {
     }
 
     // Finally, we begin invocation of the target program.
-    return sandbox_main(sandbox_root, new_cd, sandbox_argc, sandbox_argv);
+    return sandbox_main(sandbox_root, new_cd, sandbox_argc, sandbox_argv, sandbox_env);
   }
 
   // If we're out here, we are still the "parent" process.  The Prestige lives on.
