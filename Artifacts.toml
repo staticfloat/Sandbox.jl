@@ -7,7 +7,7 @@ lazy = true
     url = "https://github.com/alpinelinux/docker-alpine/raw/2f3c3015951938c521e752899a92ecd618e0c05b/x86_64/alpine-minirootfs-3.12.4-x86_64.tar.gz"
 
 [debian-julia-python3-rootfs]
-git-tree-sha1 = "dbeb5829a137e6a49337590543daa77f77eae3ba"
+git-tree-sha1 = "c0f2c53b857189e1c8378bd37c3b620ea4843e07"
 lazy = true
 
     [[debian-julia-python3-rootfs.download]]
