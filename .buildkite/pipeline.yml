@@ -6,3 +6,5 @@ steps:
       JULIA_VERSION=1.6     LOCAL_SANDBOX=true  buildkite-agent pipeline upload .buildkite/test_sandbox.yml
       JULIA_VERSION=nightly LOCAL_SANDBOX=false buildkite-agent pipeline upload .buildkite/test_sandbox.yml
       JULIA_VERSION=nightly LOCAL_SANDBOX=true  buildkite-agent pipeline upload .buildkite/test_sandbox.yml
+    agents:
+      queue: "juliaecosystem"
