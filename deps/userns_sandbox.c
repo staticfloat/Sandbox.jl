@@ -354,6 +354,10 @@ static void mount_dev(const char * root_dir) {
   // Bindmount /dev/tty into our root_dir
   snprintf(path, sizeof(path), "%s/dev/tty", root_dir);
   bind_mount("/dev/tty", path, FALSE);
+  
+  // Bindmount /dev/zero into our root_dir
+  snprintf(path, sizeof(path), "%s/dev/zero", root_dir);
+  bind_mount("/dev/zero", path, FALSE);
 
   // If the host has a /dev/urandom, expose that to the sandboxed process as well.
   if (access("/dev/urandom", F_OK) == 0) {
