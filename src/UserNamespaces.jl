@@ -28,7 +28,7 @@ function chmod_recursive(root::String, perms, use_sudo::Bool)
                 rethrow(e)
             end
         end
-        if isdir(path)
+        if isdir(path) && !islink(path)
             chmod_recursive(path, perms, use_sudo)
         end
     end
