@@ -1,6 +1,6 @@
 # If our test harness requests a local sandbox, make it so!
-REPO_ROOT = dirname(@__DIR__)
-should_build_local_sandbox = parse(Bool, get(ENV, "SANDBOX_BUILD_LOCAL_SANDBOX", "false"))
+const REPO_ROOT = dirname(@__DIR__)
+const should_build_local_sandbox = parse(Bool, get(ENV, "SANDBOX_BUILD_LOCAL_SANDBOX", "false"))
 if should_build_local_sandbox
     run(`$(Base.julia_cmd()) --project=$(REPO_ROOT) $(REPO_ROOT)/deps/build_local_sandbox.jl`)
     # Ensure LocalPreferences.toml gets used by test project as well
@@ -21,7 +21,7 @@ end
 using Test, Sandbox, Scratch
 
 # If we're on a UserNSSandbox_jll-compatible system, ensure that the sandbox is coming from where we expect.
-UserNSSandbox_jll = Sandbox.UserNSSandbox_jll
+using UserNSSandbox_jll
 if UserNSSandbox_jll.is_available()
     Artifacts = Sandbox.UserNSSandbox_jll.Artifacts
     sandbox_path = Sandbox.UserNSSandbox_jll.sandbox_path

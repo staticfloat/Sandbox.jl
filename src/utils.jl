@@ -198,27 +198,26 @@ Wrapper around libc's `getuid()` function
 """
 getgid() = ccall(:getgid, Cint, ())
 
-_sudo_cmd = nothing
+const _sudo_cmd = Ref{Union{Vector{String}, Nothing}}(nothing)
 function sudo_cmd()
-    global _sudo_cmd
 
     # Use cached value if we've already run this
-    if _sudo_cmd !== nothing
-        return _sudo_cmd
+    if _sudo_cmd[] !== nothing
+        return _sudo_cmd[]
     end
 
-    if getuid() == 0
+    _sudo_cmd[] = if getuid() == 0
         # If we're already root, don't use any kind of sudo program
-        _sudo_cmd = String[]
+        String[]
     elseif Sys.which("sudo") !== nothing success(`sudo -V`)
         # If `sudo` is available, use that
-        _sudo_cmd = ["sudo"]
+        ["sudo"]
     elseif Sys.which("su") !== nothing
         # Fall back to `su` if all else fails
-        _sudo_cmd = ["su", "root", "-c"]
+        ["su", "root", "-c"]
     else
         @warn("No known sudo-like wrappers!")
-        _sudo_cmd = String[]
+        String[]
     end
-    return _sudo_cmd
+    return _sudo_cmd[]
 end

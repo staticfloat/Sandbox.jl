@@ -1,6 +1,6 @@
 using Test, Sandbox, SHA
 
-all_executors = Sandbox.all_executors
+const all_executors = Sandbox.all_executors
 
 # Can we run `sudo` without a password?  If not, don't attempt to test the privileged runner
 if !success(`sudo -k -n true`)
@@ -17,7 +17,7 @@ function print_if_nonempty(stderr::Vector{UInt8})
     return true
 end
 
-rootfs_dir = Sandbox.alpine_rootfs()
+const rootfs_dir = Sandbox.alpine_rootfs()
 for executor in all_executors
     if !executor_available(executor)
         @error("Skipping $(executor) tests, as it does not seem to be available")
