@@ -60,10 +60,10 @@ if executor_available(DockerExecutor)
 
         @testset "pull_docker_image" begin
             with_temp_scratch() do
-                julia_rootfs = Sandbox.pull_docker_image("julia:alpine"; force=true, verbose=true)
+                julia_rootfs = Sandbox.pull_docker_image("julia:alpine"; force=true, verbose=true, platform="linux/amd64")
 
                 @test_logs (:warn, r"Will not overwrite") begin
-                    other_julia_rootfs = Sandbox.pull_docker_image("julia:alpine"; verbose=true)
+                    other_julia_rootfs = Sandbox.pull_docker_image("julia:alpine"; verbose=true, platform="linux/amd64")
                     @test other_julia_rootfs == julia_rootfs
                 end
 
