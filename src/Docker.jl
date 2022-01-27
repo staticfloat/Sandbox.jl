@@ -275,16 +275,19 @@ end
 """
     pull_docker_image(image::String,
                       output_dir::String = <default scratch location>;
+                      platform::String = "",
                       verbose::Bool = false,
                       force::Bool = false)
 
 Pulls and saves the given docker image name to the requested output directory.
 Useful for pulling down a known good rootfs image from Docker Hub, for future use
 by Sandbox executors.  If `force` is set to true, will overwrite a pre-existing
-directory, otherwise will silently return.
+directory, otherwise will silently return.  Optionally specify the platform of the
+image with `platform`.
 """
 function pull_docker_image(image_name::String,
                            output_dir::String = @get_scratch!("docker-$(sanitize_key(image_name))");
+                           platform::String = "",
                            force::Bool = false,
                            verbose::Bool = false)
     if ispath(output_dir) && !isempty(readdir(output_dir))
@@ -300,7 +303,8 @@ function pull_docker_image(image_name::String,
 
     # Pull the latest version of the image
     try
-        run(`docker pull $(image_name)`)
+        p = isempty(platform) ? `` : `--platform $(platform)`
+        run(`docker pull $(p) $(image_name)`)
     catch
         if verbose
             @warn("Cannot pull", image_name)
