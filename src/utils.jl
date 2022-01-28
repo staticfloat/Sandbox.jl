@@ -194,7 +194,7 @@ getuid() = ccall(:getuid, Cint, ())
 """
     getgid()
 
-Wrapper around libc's `getuid()` function
+Wrapper around libc's `getgid()` function
 """
 getgid() = ccall(:getgid, Cint, ())
 
