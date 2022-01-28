@@ -98,11 +98,8 @@ function build_docker_image(root_path::String, uid::Cint, gid::Cint; verbose::Bo
             # available, we use the GNU tar provided by Tar_jll. If Tar_jll is not available,
             # we fall back to the system tar.
             cd(root_path) do
-            # tar = Tar_jll.is_available() ? Tar_jll.tar() : `tar`
-            # run(pipeline(`$(tar) -c --owner=$(uid) --group=$(gid) .`, stdout=io))
-            Tar_jll.tar() do tar
+                tar = Tar_jll.is_available() ? Tar_jll.tar() : `tar`
                 run(pipeline(`$(tar) -c --owner=$(uid) --group=$(gid) .`, stdout=io))
-            end
             end
         end
 
