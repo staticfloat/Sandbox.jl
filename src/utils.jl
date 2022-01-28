@@ -81,19 +81,18 @@ end
 On Linux systems, return the strings returned by the `uname()` function in libc.
 """
 function uname()
-    if !Sys.islinux()
+    @static if !Sys.islinux()
         return String[]
     end
 
     # Get libc (or musl) and handle to uname
-    possible_libc_names = String["libc.so"]
-    possible_musl_names = String["ld-musl-x86_64.so"]
-    libcs = filter(x -> any(occursin.(possible_libc_names, Ref(x))), dllist())
-    if isempty(libcs)
-        @debug("Could not find libc, so will look for musl instead")
-        libcs = filter(x -> any(occursin.(possible_musl_names, Ref(x))), dllist())
+    libc_name = @static if libc(Base.BinaryPlatforms.HostPlatform()) == "glibc"
+        "libc.so"
+    else
+        "ld-musl-x86_64.so"
     end
-    isempty(libcs) && error("Could not find libc or musl, unable to call uname()")
+    libcs = filter(x -> occursin(libc_name, x), dllist())
+    isempty(libcs) && error("Could not find libc, unable to call uname()")
     libc = dlopen(first(libcs))
     uname_hdl = dlsym(libc, :uname)
 
