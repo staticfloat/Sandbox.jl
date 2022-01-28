@@ -160,15 +160,12 @@ Returns a list of modules currently loaded by the system.  On non-Linux platform
 returns an empty list.
 """
 function get_loaded_modules()
-    try
-        filter!(split.(readlines("/proc/modules"))) do (name, size, count, deps, state, addr)
-            return state == "Live"
-        end
-    catch e
-        if isa(e, SystemError)
-            return Vector{String}[]
-        end
-        rethrow(e)
+    @static if !Sys.islinux()
+        return Vector{String}[]
+    end
+
+    filter!(split.(readlines("/proc/modules"))) do (name, size, count, deps, state, addr)
+        state == "Live"
     end
 end
 
