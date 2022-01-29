@@ -164,6 +164,7 @@ function get_loaded_modules()
         return Vector{String}[]
     end
 
+    !isfile("/proc/modules") && return Vector{SubString{String}}[]
     filter!(split.(readlines("/proc/modules"))) do (name, size, count, deps, state, addr)
         state == "Live"
     end
