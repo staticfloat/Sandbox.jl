@@ -85,23 +85,12 @@ function uname()
         return String[]
     end
 
-    # Get libc (or musl) and handle to uname
-    libc_name = @static if libc(Base.BinaryPlatforms.HostPlatform()) == "glibc"
-        "libc.so"
-    else
-        "ld-musl-x86_64.so"
-    end
-    libcs = filter(x -> occursin(libc_name, x), dllist())
-    isempty(libcs) && error("Could not find libc, unable to call uname()")
-    libc = dlopen(first(libcs))
-    uname_hdl = dlsym(libc, :uname)
-
     # The uname struct can have wildly differing layouts; we take advantage
     # of the fact that it is just a bunch of NULL-terminated strings laid out
     # one after the other, and that it is (as best as I can tell) at maximum
     # around 1.5KB long.  We bump up to 2KB to be safe.
     uname_struct = zeros(UInt8, 2048)
-    ccall(uname_hdl, Cint, (Ptr{UInt8},), uname_struct)
+    ccall(:uname, Cint, (Ptr{UInt8},), uname_struct)
 
     # Parse out all the strings embedded within this struct
     strings = String[]
