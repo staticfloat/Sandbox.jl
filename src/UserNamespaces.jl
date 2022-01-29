@@ -116,7 +116,10 @@ function check_overlayfs_loaded(;verbose::Bool = false)
         return name == "overlay"
     end
     if isempty(mods)
-        @warn("Could not find loaded `overlay` module, try `sudo modprobe overlay` or export SANDBOX_SKIP_OVERLAYFS_CHECK=true to disable this check!")
+        @warn("""
+              The `overlay` kernel module is needed for the UserNS executors, but could not find it loaded.
+              Try `sudo modprobe overlay` or export SANDBOX_SKIP_OVERLAYFS_CHECK=true to disable this check!
+              """)
         return false
     end
 
