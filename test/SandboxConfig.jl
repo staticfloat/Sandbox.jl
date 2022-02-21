@@ -7,7 +7,7 @@ using Test, LazyArtifacts, Sandbox
         config = SandboxConfig(Dict("/" => rootfs_dir))
 
         @test haskey(config.read_only_maps, "/")
-        @test config.read_only_maps["/"] == rootfs_dir
+        @test config.read_only_maps["/"] == realpath(rootfs_dir)
         @test isempty(config.read_write_maps)
         @test isempty(config.env)
         @test config.pwd == "/"
@@ -23,7 +23,7 @@ using Test, LazyArtifacts, Sandbox
             # read-only maps
             Dict(
                 "/" => rootfs_dir,
-                "/lib" => "/lib",
+                "/lib" => rootfs_dir,
             ),
             # read-write maps
             Dict("/workspace" => @__DIR__),
@@ -37,9 +37,9 @@ using Test, LazyArtifacts, Sandbox
             stderr = Base.devnull,
             hostname="sandy",
         )
-        @test config.read_only_maps["/"] == rootfs_dir
-        @test config.read_only_maps["/lib"] == "/lib"
-        @test config.read_write_maps["/workspace"] == @__DIR__
+        @test config.read_only_maps["/"] == realpath(rootfs_dir)
+        @test config.read_only_maps["/lib"] == realpath(rootfs_dir)
+        @test config.read_write_maps["/workspace"] == realpath(@__DIR__)
         @test config.env["PATH"] == "/bin:/usr/bin"
         @test config.entrypoint == "/init"
         @test config.pwd == "/lib"

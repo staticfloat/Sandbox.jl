@@ -1,0 +1,3 @@
+*.o
+userns_overlay_probe
+userns_sandbox

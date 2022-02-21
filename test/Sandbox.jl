@@ -176,6 +176,7 @@ for executor in all_executors
                     entrypoint = "/read_only/entrypoint",
                     stdout = stdout,
                     stderr = stderr,
+                    persist = false,
                 )
 
                 # Generate an `entrypoint` script that mounts a tmpfs-backed overlayfs over our read-only mounts
@@ -314,7 +315,8 @@ for executor in all_executors
                 config = SandboxConfig(
                     ro_mappings,
                     Dict("/tmp/rw_dir" => rw_dir),
-                    Dict("HOME" => "/root"),
+                    Dict("HOME" => "/root");
+                    verbose = true,
                 )
                 with_executor(executor) do exe
                     @test success(exe, config, `/bin/sh -c "apt update && apt install -y curl && curl -L $(socrates_url) -o /tmp/rw_dir/$(basename(socrates_url))"`)
