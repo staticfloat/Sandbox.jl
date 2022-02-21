@@ -14,6 +14,24 @@ function max_directory_ctime(prefix::String)
     return max_time
 end
 
+function get_mounts(;verbose::Bool = false)
+    # Get a listing of the current mounts.  If we can't do this, just give up
+    if !isfile("/proc/mounts")
+        if verbose
+            @info("Couldn't open /proc/mounts, returning...")
+        end
+        return Tuple{String,SubString{String}}[]
+    end
+    mounts = String(read("/proc/mounts"))
+
+    # Grab the fstype and the mountpoints
+    mounts = [split(m)[2:3] for m in split(mounts, "\n") if !isempty(m)]
+
+    # Canonicalize mountpoints now so as to dodge symlink difficulties
+    mounts = [(abspath(m[1]*"/"), m[2]) for m in mounts]
+    return mounts
+end
+
 """
     is_ecryptfs(path::AbstractString; verbose::Bool=false)
 
@@ -37,19 +55,10 @@ function is_ecryptfs(path::AbstractString; verbose::Bool=false)
     end
 
     # Get a listing of the current mounts.  If we can't do this, just give up
-    if !isfile("/proc/mounts")
-        if verbose
-            @info("Couldn't open /proc/mounts, returning...")
-        end
+    mounts = get_mounts()
+    if isempty(mounts)
         return false, path
     end
-    mounts = String(read("/proc/mounts"))
-
-    # Grab the fstype and the mountpoints
-    mounts = [split(m)[2:3] for m in split(mounts, "\n") if !isempty(m)]
-
-    # Canonicalize mountpoints now so as to dodge symlink difficulties
-    mounts = [(abspath(m[1]*"/"), m[2]) for m in mounts]
 
     # Fast-path asking for a mountpoint directly (e.g. not a subdirectory)
     direct_path = [m[1] == path for m in mounts]
@@ -207,4 +216,107 @@ function sudo_cmd()
         _sudo_cmd = String[]
     end
     return _sudo_cmd
+end
+
+function default_persist_root_dirs()
+    dirs = String[]
+
+    # If the user has set a persistence dir preference, of course try that first:
+    ppd_pref = @load_preference("persist_dir", nothing)
+    if ppd_pref !== nothing
+        push!(dirs, ppd_pref)
+    end
+
+    # When doing nested sandboxing, we pass information via environment variables:
+    if haskey(ENV, "SANDBOX_PERSISTENCE_DIR")
+        push!(dirs, ENV["SANDBOX_PERSISTENCE_DIR"])
+    end
+
+    # Storing in a scratch space (which is within our writable depot) usually works,
+    # except when our depot is on a `zfs` or `ecryptfs` mount, for example.
+    push!(dirs, @get_scratch!("persist_dirs"))
+    return dirs
+end
+
+function find_persist_dir_root(rootfs_path::String, dir_hints::Vector{String} = default_persist_root_dirs(); verbose::Bool = false)
+    function probe_overlay_mount(rootfs_path, mount_path; verbose::Bool = false, userxattr::Bool = false)
+        probe_exe = joinpath(dirname(UserNSSandbox_jll.sandbox_path), "userns_overlay_probe")
+
+        probe_args = String[]
+        if verbose
+            push!(probe_args, "--verbose")
+        end
+        if userxattr
+            push!(probe_args, "--userxattr")
+        end
+
+        return success(run(pipeline(ignorestatus(
+            `$(probe_exe) $(probe_args) $(realpath(rootfs_path)) $(realpath(mount_path))`
+        ); stdout = verbose ? stdout : devnull, stderr = verbose ? stderr : devnull)))
+    end
+
+    # If one of our `dir_hints` works, use that, as those are typically our first
+    # choices; things like a scratchspace, a user-supplied path, etc...
+    for mount_path in dir_hints, userxattr in (true, false)
+        if probe_overlay_mount(rootfs_path, mount_path; userxattr, verbose)
+            return (mount_path, userxattr)
+        end
+    end
+
+    # Otherwise, walk over the list of mounts, excluding mount types we know won't work
+    disallowed_mount_types = Set([
+        # ecryptfs doesn't play nicely with sandboxes at all
+        "ecryptfs",
+        # zfs does not support features (RENAME_WHITEOUT) required for overlay upper dirs
+        "zfs",
+        # overlays cannot stack, of course
+        "overlay",
+
+        # Exclude mount types that are not for storing data:
+        "auristorfs",
+        "autofs",
+        "binfmt_misc",
+        "bpf",
+        "cgroup2",
+        "configfs",
+        "debugfs",
+        "devpts",
+        "devtmpfs",
+        "efivarfs",
+        "fusectl",
+        "hugetlbfs",
+        "mqueue",
+        "proc",
+        "pstore",
+        "ramfs",
+        "rpc_pipefs",
+        "securityfs",
+        "sysfs",
+        "tracefs",
+    ])
+
+    mounts = first.(filter(((path, type),) -> type ∉ disallowed_mount_types, get_mounts()))
+
+    # Filter each `mount` point on a set of criteria that we like (e.g. the mount point
+    # is owned by us (user-specific `tmpdir`, for instance))
+    function owned_by_me(path)
+        try
+            return stat(path).uid == getuid()
+        catch e
+            if isa(e, Base.IOError) && -e.code ∈ (Base.Libc.EACCES,)
+                return false
+            end
+            rethrow(e)
+        end
+    end
+    sort!(mounts; by = owned_by_me, rev=true)
+
+    for mount_path in mounts, userxattr in (true, false)
+        if probe_overlay_mount(rootfs_path, mount_path; userxattr, verbose)
+            return (mount_path, userxattr)
+        end
+    end
+
+    # Not able to find a SINGLE persistent directory location that works!
+    return (nothing, false)
 end

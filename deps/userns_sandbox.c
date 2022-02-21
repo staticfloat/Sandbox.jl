@@ -1,4 +1,4 @@
-/* Copyright (c) 2017 Julia Computing Inc and contributors */
+/* Copyright (c) 2023 Julia Computing Inc and contributors */
 #define _GNU_SOURCE
 
 /*
@@ -35,49 +35,7 @@ Then run it, mounting in a rootfs with a workspace and no other read-only maps:
     /tmp/sandbox --verbose --rootfs $rootfs_dir --workspace /tmp/workspace:/workspace --cd /workspace /bin/bash
 */
 
-
-/* Seperate because the headers below don't have all dependencies properly
-   declared */
-#include <sys/socket.h>
-
-#include <assert.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <linux/capability.h>
-#include <linux/socket.h>
-#include <linux/if.h>
-#include <linux/in.h>
-#include <linux/netlink.h>
-#include <linux/route.h>
-#include <linux/rtnetlink.h>
-#include <linux/sockios.h>
-#include <linux/veth.h>
-#include <sched.h>
-#include <signal.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/mount.h>
-#include <sys/ioctl.h>
-#include <sys/prctl.h>
-#include <sys/stat.h>
-#include <sys/syscall.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <unistd.h>
-#include <dirent.h>
-#include <libgen.h>
-#include <sys/reboot.h>
-#include <linux/reboot.h>
-#include <linux/limits.h>
-#include <getopt.h>
-#include <byteswap.h>
-#include <mntent.h>
-
-/**** Global Variables ***/
-#define TRUE 1
-#define FALSE 0
+#include "userns_common.h"
 
 // sandbox_root is the location of the rootfs on disk.  This is required.
 char *sandbox_root = NULL;
@@ -88,9 +46,6 @@ char *new_cd = NULL;
 // persist_dir is where we will store overlayfs data.
 // Specifying this will allow subsequent invocations to persist temporary state.
 char * persist_dir = NULL;
-
-// verbose sets whether we're in verbose mode.
-unsigned char verbose = 0;
 
 // Linked list of volume mappings
 struct map_list {
@@ -108,317 +63,9 @@ enum {
 };
 static int execution_mode;
 
-/**** General Utilities ***/
+// Whether we should mount our overlay with the `userxattr` option
+static int userxattr = 0;
 
-/* Like assert, but don't go away with optimizations */
-static void _check(int ok, int line) {
-  if (!ok) {
-    fprintf(stderr, "At line %d, ABORTED (%d: %s)!\n", line, errno, strerror(errno));
-    fflush(stdout);
-    fflush(stderr);
-    _exit(1);
-  }
-}
-#define check(ok) _check(ok, __LINE__)
-
-/* Opens /proc/%pid/%file */
-static int open_proc_file(pid_t pid, const char *file, int mode) {
-  char path[PATH_MAX];
-  int n = snprintf(path, sizeof(path), "/proc/%d/%s", pid, file);
-  check(n >= 0 && n < sizeof(path));
-  int fd = open(path, mode);
-  check(fd != -1);
-  return fd;
-}
-
-/* `touch` a file; create it if it doesn't already exist. */
-static void touch(const char * path) {
-  int fd = open(path, O_RDONLY | O_CREAT, S_IRUSR | S_IRGRP | S_IROTH);
-  // Ignore EISDIR as sometimes we try to `touch()` a directory
-  if (fd == -1 && errno != EISDIR) {
-    check(fd != -1);
-  }
-  close(fd);
-}
-
-/* Make all directories up to the given directory name. */
-static void mkpath(const char * dir) {
-  // If this directory already exists, back out.
-  DIR * dir_obj = opendir(dir);
-  if (dir_obj) {
-    closedir(dir_obj);
-    return;
-  }
-  errno = 0;
-
-  // Otherwise, first make sure our parent exists.  Note that dirname()
-  // clobbers its input, so we copy to a temporary variable first. >:|
-  char dir_dirname[PATH_MAX];
-  strncpy(dir_dirname, dir, PATH_MAX);
-  mkpath(dirname(&dir_dirname[0]));
-
-  // then create our directory
-  int result = mkdir(dir, 0777);
-  check((0 == result) || (errno == EEXIST));
-}
-
-static int isdir(const char * path) {
-  struct stat path_stat;
-  int result = stat(path, &path_stat);
-
-  // Silently ignore calling `isdir()` on a non-existant path
-  check((0 == result) || (errno == ENOENT) || (errno == ENOTDIR));
-  return S_ISDIR(path_stat.st_mode);
-}
-
-static int islink(const char * path) {
-  struct stat path_stat;
-  int result = stat(path, &path_stat);
-
-  // Silently ignore calling `islink()` on a non-existant path
-  check((0 == result) || (errno == ENOENT) || (errno == ENOTDIR));
-  return S_ISLNK(path_stat.st_mode);
-}
-
-/**** Signal handling *****
- *
- * We will support "passing through" signals to the child process transparently,
- * for a predefined set of signals, which we set up here.  The signal chain will
- * pass from the 'outer' sandbox process (e.g. the parent of `clone()`) to the
- * 'inner' sandbox process (e.g. the parent of `fork()`), and finally to the
- * actual target process (e.g. the child of `fork()`).
- */
-
-pid_t child_pid;
-static void signal_passthrough(int sig) {
-  kill(child_pid, sig);
-}
-
-// The list of signals that we will forward to our child process
-int forwarded_signals[] = {
-  SIGHUP,
-  SIGPIPE,
-  SIGSTOP,
-  SIGINT,
-  SIGTERM,
-  SIGUSR1,
-  SIGUSR2,
-};
-
-static void setup_signal_forwarding() {
-  for (int idx=0; idx<sizeof(forwarded_signals)/sizeof(int); idx++) {
-    signal(forwarded_signals[idx], signal_passthrough);
-  }
-}
-
-/**** User namespaces *****
- *
- * For a general overview on user namespaces, see the corresponding manual page
- * user_namespaces(7). In general, user namespaces allow unprivileged users to
- * run privileged executables, by rewriting uids inside the namespaces (and
- * in particular, a user can be root inside the namespace, but not outside),
- * with the kernel still enforcing access protection as if the user was
- * unprivilged (to all files and resources not created exclusively within the
- * namespace). Absent kernel bugs, this provides relatively strong protections
- * against misconfiguration (because no true privilege is ever bestowed upon
- * the sandbox). It should be noted however, that there were such kernel bugs
- * as recently as Feb 2016.  These were sneaky privilege escalation bugs,
- * rather unimportant to the use case of BinaryBuilder, but a recent and fully
- * patched kernel should be considered essential for any security-sensitive
- * work done on top of this infrastructure).
- */
-static void configure_user_namespace(pid_t pid, uid_t src_uid, gid_t src_gid,
-                                     uid_t dst_uid, gid_t dst_gid) {
-  int nbytes = 0;
-
-  if (verbose) {
-    fprintf(stderr, "--> Mapping %d:%d to %d:%d within container namespace\n",
-            src_uid, src_gid, dst_uid, dst_gid);
-  }
-
-  // Setup uid map
-  int uidmap_fd = open_proc_file(pid, "uid_map", O_WRONLY);
-  check(uidmap_fd != -1);
-  char uidmap[100];
-  nbytes = snprintf(uidmap, sizeof(uidmap), "%d\t%d\t1\n", dst_uid, src_uid);
-  check(nbytes > 0 && nbytes <= sizeof(uidmap));
-  check(write(uidmap_fd, uidmap, nbytes) == nbytes);
-  close(uidmap_fd);
-
-  // Deny setgroups
-  int setgroups_fd = open_proc_file(pid, "setgroups", O_WRONLY);
-  char deny[] = "deny";
-  check(write(setgroups_fd, deny, sizeof(deny)) == sizeof(deny));
-  close(setgroups_fd);
-
-  // Setup gid map
-  int gidmap_fd = open_proc_file(pid, "gid_map", O_WRONLY);
-  check(gidmap_fd != -1);
-  char gidmap[100];
-  nbytes = snprintf(gidmap, sizeof(gidmap), "%d\t%d\t1", dst_gid, src_gid);
-  check(nbytes > 0 && nbytes <= sizeof(gidmap));
-  check(write(gidmap_fd, gidmap, nbytes) == nbytes);
-}
-
-
-/*
- * Mount an overlayfs from `src` onto `dest`, anchoring the changes made to the overlayfs
- * within the folders `work_dir`/upper and `work_dir`/work.  Note that the common case of
- * `src` == `dest` signifies that we "shadow" the original source location and will simply
- * discard any changes made to it when the overlayfs disappears.  This is how we protect our
- * rootfs and shards when mounting from a local filesystem, as well as how we convert a
- * read-only rootfs and shards to a read-write system when mounting from squashfs images.
- */
-static void mount_overlay(const char * src, const char * dest, const char * bname,
-                          const char * work_dir, uid_t uid, gid_t gid) {
-  char upper[PATH_MAX], work[PATH_MAX], opts[3*PATH_MAX+28];
-
-  // Construct the location of our upper and work directories
-  snprintf(upper, sizeof(upper), "%s/upper/%s", work_dir, bname);
-  snprintf(work, sizeof(work), "%s/work/%s", work_dir, bname);
-
-  // If `src` or `dest` is "", we actually want it to be "/", so adapt here because
-  // this is the only place in the code base where we actually need the slash at the
-  // end of the directory name.
-  if (src[0] == '\0') {
-    src = "/";
-  }
-  if (dest[0] == '\0') {
-    dest = "/";
-  }
-
-  if (verbose) {
-    fprintf(stderr, "--> Mounting overlay of %s at %s (modifications in %s, workspace in %s)\n", src, dest, upper, work);
-  }
-
-  // Make the upper and work directories
-  mkpath(upper);
-  mkpath(work);
-
-  // Construct the opts, mount the overlay
-  snprintf(opts, sizeof(opts), "lowerdir=%s,upperdir=%s,workdir=%s", src, upper, work);
-  check(0 == mount("overlay", dest, "overlay", 0, opts));
-
-  // Chown this directory to the desired UID/GID, so that it doesn't look like it's
-  // owned by "nobody" when we're inside the sandbox.
-  check(0 == chown(dest, uid, gid));
-}
-
-static void mount_procfs(const char * root_dir, uid_t uid, gid_t gid) {
-  char path[PATH_MAX];
-
-  // Mount procfs at <root_dir>/proc
-  snprintf(path, sizeof(path), "%s/proc", root_dir);
-  if (verbose) {
-    fprintf(stderr, "--> Mounting procfs at %s\n", path);
-  }
-  // Attempt to unmount a previous /proc if it exists
-  check(0 == mount("proc", path, "proc", 0, ""));
-
-  // Chown this directory to the desired UID/GID, so that it doesn't look like it's
-  // owned by "nobody" when we're inside the sandbox.  We allow this to fail, as
-  // sometimes we're trying to chown() something we don't own.
-  int ignored = chown(path, uid, gid);
-}
-
-static void bind_mount(const char *src, const char *dest, char read_only) {
-  // If `src` is a symlink, this bindmount may run into issues, so we collapse
-  // `src` via `realpath()` to ensure that we get a non-symlink.
-  char resolved_src[PATH_MAX] = {0};
-  if (islink(src)) {
-    if (NULL == realpath(src, resolved_src)) {
-      if (verbose) {
-        fprintf(stderr, "WARNING: Unable to resolve %s ([%d] %s)\n", src, errno, strerror(errno));
-      }
-    }
-  }
-
-  if (resolved_src[0] == '\0') {
-    strncpy(resolved_src, src, PATH_MAX);
-  }
-
-  if (verbose) {
-    if (read_only) {
-      fprintf(stderr, "--> Bind-mounting %s over %s (read-only)\n", resolved_src, dest);
-    } else {
-      fprintf(stderr, "--> Bind-mounting %s over %s (read-write)\n", resolved_src, dest);
-    }
-  }
-
-  // If we're mounting in a directory, create the mountpoint as a directory,
-  // otherwise as a file.  Note that if `src` does not exist, we'll create a
-  // file here, then error out on the `mount()` call.
-  if (isdir(resolved_src)) {
-    mkpath(dest);
-  } else {
-    touch(dest);
-  }
-
-  // We don't expect workspaces to have any submounts in normal operation.
-  // However, for runshell(), workspace could be an arbitrary directory,
-  // including one with sub-mounts, so allow that situation with MS_REC.
-  check(0 == mount(resolved_src, dest, "", MS_BIND|MS_REC, NULL));
-
-  // remount to read-only. this requires a separate remount:
-  // https://git.kernel.org/pub/scm/utils/util-linux/util-linux.git/commit/?id=9ac77b8a78452eab0612523d27fee52159f5016a
-  // during such a remount, we're not allowed to clear locked mount flags:
-  // https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=9566d6742852c527bf5af38af5cbb878dad75705
-  if (read_only) {
-    // we cannot apply locked mount flags blindly, because they change behaviour of the
-    // mount (e.g. noexec), so figure out which ones we need by looking at mtab.
-    struct stat src_stat;
-    stat(resolved_src, &src_stat);
-
-    struct mntent *mnt = NULL;
-    FILE * mtab = setmntent("/proc/self/mounts", "r");
-    check(mtab != NULL);
-    while (mnt = getmntent(mtab)) {
-        struct stat dev_stat;
-        // It's possible that we try to stat() something that we're
-        // not allowed to look at; if that occurs, skip it, hoping
-        // that it's not the mount we're actually interested in.
-        if (stat(mnt->mnt_dir, &dev_stat) == 0 &&
-            dev_stat.st_dev == src_stat.st_dev)
-            break;
-
-        // Don't let a non-matching `mnt` leak through, in the event
-        // that we never find the device the mount belongs to.
-        mnt = NULL;
-    }
-    endmntent(mtab);
-
-    // This will fail if we never found the matching `mnt`.
-    check(mnt != NULL);
-
-    int locked_flags = 0;
-    char *mnt_opt;
-    mnt_opt = strtok(mnt->mnt_opts, ",");
-    while (mnt_opt != NULL) {
-        if (strcmp(mnt_opt, "nodev") == 0)
-            locked_flags |= MS_NODEV;
-        else if (strcmp(mnt_opt, "nosuid") == 0)
-            locked_flags |= MS_NOSUID;
-        else if (strcmp(mnt_opt, "noexec") == 0)
-            locked_flags |= MS_NOEXEC;
-        else if (strcmp(mnt_opt, "noatime") == 0)
-            locked_flags |= MS_NOATIME;
-        else if (strcmp(mnt_opt, "nodiratime") == 0)
-            locked_flags |= MS_NODIRATIME;
-        else if (strcmp(mnt_opt, "relatime") == 0)
-            locked_flags |= MS_RELATIME;
-        mnt_opt = strtok(NULL, ",");
-    }
-    check(0 == mount(resolved_src, dest, "", MS_BIND|MS_REMOUNT|MS_RDONLY|locked_flags, NULL));
-  }
-}
-
-static void bind_host_node(const char *root_dir, const char *name, char read_only) {
-  char path[PATH_MAX];
-  if (access(name, F_OK) == 0) {
-    snprintf(path, sizeof(path), "%s/%s", root_dir, name);
-    bind_mount(name, path, read_only);
-  }
-}
 
 /*
  * We use this method to get /dev in shape.  If we're running as init, we need to
@@ -502,6 +149,7 @@ static void mount_the_world(const char * root_dir,
     // will mount an actual `procfs` over this at the end of this function, so
     // the overlayfs work directories are completely hidden from view.
     persist_dir = "/proc";
+    userxattr = 0;
 
     // Create tmpfs to store ephemeral changes.  These changes are lost once
     // the `tmpfs` is unmounted, which occurs when all processes within the
@@ -518,12 +166,16 @@ static void mount_the_world(const char * root_dir,
   }
 
   // The first thing we do is create an overlay mounting `root_dir` over itself.
-  // `root_dir` is the path to the already loopback-mounted rootfs image, and we
-  // are mounting it as an overlay over itself, so that we can make modifications
+  // `root_dir` is the path to the already-mounted rootfs image, and we are
+  // mounting it as an overlay over itself, so that we can make modifications
   // without altering the actual rootfs image.  When running in privileged mode,
   // we're mounting before cloning, in unprivileged mode, we clone before calling
-  // this mehod at all.sta
-  mount_overlay(root_dir, root_dir, "rootfs", persist_dir, uid, gid);
+  // this mehod at all.
+  check(TRUE == mount_overlay(root_dir, root_dir, "rootfs", persist_dir, userxattr));
+
+  // Chown this directory to the desired UID/GID, so that it doesn't look like it's
+  // owned by "nobody" when we're inside the sandbox.
+  check(0 == chown(root_dir, uid, gid));
 
   // Now that we've registered persist_dit put /proc back in its place in the big world.
   // This is necessary for certain libc APIs to function correctly again.
@@ -645,6 +297,7 @@ static void print_help() {
   fputs("[--workspace <from>:<to>, --workspace <from>:<to>, ...] ", stderr);
   fputs("[--persist <work_dir>] ", stderr);
   fputs("[--entrypoint <exe_path>] ", stderr);
+  fputs("[--userxattr] ", stderr);
   fputs("[--verbose] [--help] <cmd>\n", stderr);
   fputs("\nExample:\n", stderr);
   fputs("  mkdir -p /tmp/workspace\n", stderr);
@@ -721,6 +374,7 @@ int main(int sandbox_argc, char **sandbox_argv) {
       {"uid",        required_argument, NULL, 'u'},
       {"gid",        required_argument, NULL, 'g'},
       {"tmpfs-size", required_argument, NULL, 't'},
+      {"userxattr",  no_argument,       NULL, 'x'},
       {"hostname",   required_argument, NULL, 'H'},
       {0, 0, 0, 0}
     };
@@ -832,6 +486,9 @@ int main(int sandbox_argc, char **sandbox_argv) {
         if (verbose) {
           fprintf(stderr, "Parsed --hostname as \"%s\"\n", hostname);
         }
+        break;
+      case 'x':
+        userxattr = 1;
         break;
       default:
         fputs("getoptlong defaulted?!\n", stderr);

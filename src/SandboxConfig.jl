@@ -70,7 +70,7 @@ struct SandboxConfig
                            env::Dict{String,String} = Dict{String,String}();
                            entrypoint::Union{String,Nothing} = nothing,
                            pwd::String = "/",
-                           persist::Bool = false,
+                           persist::Bool = true,
                            multiarch::Vector{<:Platform} = Platform[],
                            uid::Integer=0,
                            gid::Integer=0,
@@ -89,7 +89,14 @@ struct SandboxConfig
             end
         end
 
-        # Don't touch anything that is encrypted; it doesn't play well with user namespaces or docker
+        # Force every path to be `realpath()`'ed
+        for (dst, src) in read_only_maps
+            read_only_maps[dst] = realpath(src)
+        end
+        for (dst, src) in read_write_maps
+            read_write_maps[dst] = realpath(src)
+        end
+
         for path in [values(read_only_maps)...; values(read_write_maps)...]
             crypt, mountpoint = is_ecryptfs(path; verbose)
             if crypt

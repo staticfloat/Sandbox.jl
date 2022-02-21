@@ -13,6 +13,7 @@ if executor_available(UnprivilegedUserNamespacesExecutor)
             end
         end
     end
+    # Can run these tests only if we can actually mount tmpfs with unprivileged executor.
     @testset "Customize the tempfs size" begin
         rootfs_dir = Sandbox.debian_rootfs()
         read_only_maps = Dict("/" => rootfs_dir)
@@ -26,7 +27,7 @@ if executor_available(UnprivilegedUserNamespacesExecutor)
         @testset "tempfs is big enough" begin
             stdout = IOBuffer()
             stderr = IOBuffer()
-            config = SandboxConfig(read_only_maps, read_write_maps, env; tmpfs_size = "1G", stdout, stderr)
+            config = SandboxConfig(read_only_maps, read_write_maps, env; tmpfs_size = "1G", stdout, stderr, persist=false)
             with_executor(UnprivilegedUserNamespacesExecutor) do exe
                 @test success(exe, config, cmd)
                 @test isempty(take!(stdout))
@@ -38,7 +39,7 @@ if executor_available(UnprivilegedUserNamespacesExecutor)
         @testset "tempfs is too small" begin
             stdout = IOBuffer()
             stderr = IOBuffer()
-            config = SandboxConfig(read_only_maps, read_write_maps, env; tmpfs_size = "10M", stdout, stderr)
+            config = SandboxConfig(read_only_maps, read_write_maps, env; tmpfs_size = "10M", stdout, stderr, persist=false)
             with_executor(UnprivilegedUserNamespacesExecutor) do exe
                 @test !success(exe, config, cmd)
                 @test startswith(strip(String(take!(stderr))), strip("""

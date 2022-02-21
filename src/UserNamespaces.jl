@@ -50,10 +50,12 @@ end
 # these as two separate, but very similar, executors.
 mutable struct UnprivilegedUserNamespacesExecutor <: UserNamespacesExecutor
     persistence_dir::Union{String,Nothing}
+    userxattr::Bool
     UnprivilegedUserNamespacesExecutor() = new(nothing)
 end
 mutable struct PrivilegedUserNamespacesExecutor <: UserNamespacesExecutor
     persistence_dir::Union{String,Nothing}
+    userxattr::Bool
     PrivilegedUserNamespacesExecutor() = new(nothing)
 end
 
@@ -169,11 +171,20 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
     # setup, if we do not, create a temporary directory and set it into our executor
     if config.persist
         if exe.persistence_dir === nothing
-            persist_parent_dir = get(ENV, "SANDBOX_PERSISTENCE_DIR", tempdir())
-            mkpath(persist_parent_dir)
-            exe.persistence_dir = mktempdir(persist_parent_dir)
+            # Search for a functional persistence directory
+            persist_root, userxattr = find_persist_dir_root(config.read_only_maps["/"]; verbose=config.verbose)
+
+            if persist_root === nothing
+                throw(ArgumentError("Unable to find a persistence directory root that works!"))
+            end
+            exe.persistence_dir = mktempdir(persist_root)
+            exe.userxattr = userxattr
         end
         append!(cmd_string, ["--persist", exe.persistence_dir])
+
+        if exe.userxattr
+            push!(cmd_string, "--userxattr")
+        end
     end
 
     # For each platform requested by `multiarch`, ensure its matching interpreter is registered.
