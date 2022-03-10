@@ -339,6 +339,14 @@ static void bind_mount(const char *src, const char *dest, char read_only) {
   }
 }
 
+static void bind_host_node(const char *root_dir, const char *name) {
+  char path[PATH_MAX];
+  if (access(name, F_OK) == 0) {
+    snprintf(path, sizeof(path), "%s/%s", root_dir, name);
+    bind_mount(name, path, FALSE);
+  }
+}
+
 /*
  * We use this method to get /dev in shape.  If we're running as init, we need to
  * mount full-blown devtmpfs at /dev.  If we're just a sandbox, we only bindmount
@@ -347,25 +355,18 @@ static void bind_mount(const char *src, const char *dest, char read_only) {
 static void mount_dev(const char * root_dir) {
   char path[PATH_MAX];
 
-  // Bindmount /dev/null into our root_dir
-  snprintf(path, sizeof(path), "%s/dev/null", root_dir);
-  bind_mount("/dev/null", path, FALSE);
+  // These are all things that should exist in the host environment, but may not
+  // We use `bind_host_node()` to bindmount them into our sandbox if they exist.
+  bind_host_node(root_dir, "/dev/null");
+  bind_host_node(root_dir, "/dev/tty");
+  bind_host_node(root_dir, "/dev/zero");
+  bind_host_node(root_dir, "/dev/random");
+  bind_host_node(root_dir, "/dev/urandom");
+  bind_host_node(root_dir, "/dev/shm");
 
-  // Bindmount /dev/tty into our root_dir
-  snprintf(path, sizeof(path), "%s/dev/tty", root_dir);
-  bind_mount("/dev/tty", path, FALSE);
-  
-  // Bindmount /dev/zero into our root_dir
-  snprintf(path, sizeof(path), "%s/dev/zero", root_dir);
-  bind_mount("/dev/zero", path, FALSE);
-
-  // If the host has a /dev/urandom, expose that to the sandboxed process as well.
-  if (access("/dev/urandom", F_OK) == 0) {
-    snprintf(path, sizeof(path), "%s/dev/urandom", root_dir);
-    bind_mount("/dev/urandom", path, FALSE);
-  }
-
-  // Do the same for /dev/pts and /dev/ptmx
+  // /dev/pts and /dev/ptmx are more special; we actually mount a new filesystem
+  // on /dev/pts, and then bind-mount /dev/pts/ptmx to /dev/ptmx within the
+  // sandbox itself.
   snprintf(path, sizeof(path), "%s/dev/pts", root_dir);
   mkpath(path);
   check(0 == mount("devpts", path, "devpts", 0, "ptmxmode=0666"));
@@ -374,13 +375,6 @@ static void mount_dev(const char * root_dir) {
   char ptmx_dst[PATH_MAX];
   snprintf(ptmx_dst, sizeof(ptmx_dst), "%s/dev/ptmx", root_dir);
   bind_mount(path, ptmx_dst, FALSE);
-
-  // Bindmount /dev/shm, if it exists (it technically may not)
-  if (access("/dev/shm", F_OK) == 0) {
-    snprintf(path, sizeof(path), "%s/dev/shm", root_dir);
-    mkpath(path);
-    bind_mount("/dev/shm", path, FALSE);
-  }
 }
 
 static void mount_maps(const char * dest, struct map_list * workspaces, uint8_t read_only) {
