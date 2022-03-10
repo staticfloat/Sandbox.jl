@@ -2,11 +2,8 @@
 REPO_ROOT = dirname(@__DIR__)
 should_build_local_sandbox = parse(Bool, get(ENV, "SANDBOX_BUILD_LOCAL_SANDBOX", "false"))
 if should_build_local_sandbox
-    run(`$(Base.julia_cmd()) --project=$(REPO_ROOT) $(REPO_ROOT)/deps/build_local_sandbox.jl`)
-    # Ensure LocalPreferences.toml gets used by test project as well
-    # This is a workaround for https://github.com/JuliaLang/Pkg.jl/issues/2500
-    # Note that we copy to `Base.active_project()`, which is often the temporary project that `Pkg.test()` creates
-    cp(joinpath(REPO_ROOT, "LocalPreferences.toml"), joinpath(dirname(Base.active_project()), "LocalPreferences.toml"))
+    @info("Building local sandbox")
+    run(`$(Base.julia_cmd()) --project=$(Base.active_project()) $(REPO_ROOT)/deps/build_local_sandbox.jl`)
 else
     # Clear out any `LocalPreferences.toml` files that we may or may not have.
     for prefix in (REPO_ROOT, joinpath(REPO_ROOT, "test"))

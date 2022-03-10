@@ -8,9 +8,9 @@ sandbox_src = joinpath(@__DIR__, "userns_sandbox.c")
 run(`cc -std=c99 -O2 -static -static-libgcc -g -o $(sandbox_path) $(sandbox_src)`)
 
 # Tell UserNSSandbox_jll to load our `sandbox` instead of the default artifact one
+jll_uuid = Base.UUID("b88861f7-1d72-59dd-91e7-a8cc876a4984")
 set_preferences!(
-    joinpath(dirname(@__DIR__), "LocalPreferences.toml"),
-    "UserNSSandbox_jll",
+    jll_uuid,
     "sandbox_path" => sandbox_path;
     force=true,
 )
