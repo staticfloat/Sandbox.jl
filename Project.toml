@@ -15,8 +15,15 @@ Tar = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
 Tar_jll = "9b64493d-8859-5bf3-93d7-7c32dd38186f"
 UserNSSandbox_jll = "b88861f7-1d72-59dd-91e7-a8cc876a4984"
 
+[extras]
+Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Pkg", "Test"]
+
 [compat]
-Preferences = "1.2.1"
+Preferences = "1.2.5"
 Scratch = "1"
 Tar_jll = "1.34.0"
 UserNSSandbox_jll = "2022.1.6"
