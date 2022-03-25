@@ -22,18 +22,77 @@ if executor_available(UnprivilegedUserNamespacesExecutor)
             "HOME" => "/home/juliaci",
             "USER" => "juliaci",
         )
-        cmd = `/bin/sh -c "mkdir -p /home/juliaci && cd /home/juliaci && dd if=/dev/urandom of=sample.txt bs=50M count=1"`
+        cmd = `/bin/sh -c "mkdir -p /home/juliaci && cd /home/juliaci && dd if=/dev/zero of=sample.txt bs=50M count=1"`
         @testset "tempfs is big enough" begin
-            config = SandboxConfig(read_only_maps, read_write_maps, env; tmpfs_size = "1G")
+            stdout = IOBuffer()
+            stderr = IOBuffer()
+            config = SandboxConfig(read_only_maps, read_write_maps, env; tmpfs_size = "1G", stdout, stderr)
             with_executor(UnprivilegedUserNamespacesExecutor) do exe
                 @test success(exe, config, cmd)
+                @test isempty(take!(stdout))
+                @test strip(String(take!(stderr))) == strip("""
+                1+0 records in
+                1+0 records out
+                """)
             end
         end
         @testset "tempfs is too small" begin
-            config = SandboxConfig(read_only_maps, read_write_maps, env; tmpfs_size = "10M")
+            stdout = IOBuffer()
+            stderr = IOBuffer()
+            config = SandboxConfig(read_only_maps, read_write_maps, env; tmpfs_size = "10M", stdout, stderr)
             with_executor(UnprivilegedUserNamespacesExecutor) do exe
                 @test !success(exe, config, cmd)
+                @test strip(String(take!(stderr))) == strip("""
+                dd: error writing 'sample.txt': No space left on device
+                1+0 records in
+                0+0 records out""")
             end
+        end
+    end
+
+    @testset "Signal Handling" begin
+        # This test ensures that killing the child returns a receivable signal
+        config = SandboxConfig(Dict("/" => Sandbox.alpine_rootfs()))
+        with_executor(UnprivilegedUserNamespacesExecutor) do exe
+            p = run(exe, config, ignorestatus(`/bin/sh -c "kill -s TERM \$\$"`))
+            @test p.termsignal == Base.SIGTERM
+        end
+
+        # This test ensures that killing the sandbox executable passes the
+        # signal on to the child (which then returns a receivable signal)
+        config = SandboxConfig(Dict("/" => Sandbox.alpine_rootfs()))
+        with_executor(UnprivilegedUserNamespacesExecutor) do exe
+            stdout = IOBuffer()
+            stderr = IOBuffer()
+
+            signal_test = """
+            trap "echo received SIGINT" INT
+            trap "echo received SIGTERM ; trap - TERM; kill -s TERM \$\$" TERM
+
+            sleep 2
+            """
+
+            # We use `build_executor_command()` here so that we can use `run(; wait=false)`.
+            signal_cmd = pipeline(
+                ignorestatus(Sandbox.build_executor_command(exe, config, `/bin/sh -c "$(signal_test)"`));
+                stdout,
+                stderr
+            )
+            p = run(signal_cmd; wait=false)
+            sleep(0.1)
+
+            # Send SIGINT, wait a bit
+            kill(p, Base.SIGINT)
+            sleep(0.01)
+
+            # Send SIGTERM, wait for process termination
+            kill(p, Base.SIGTERM)
+            wait(p)
+
+            # Ensure that the sandbox died as we expected, but that the child process got
+            # the messages and responded appropriately.
+            @test p.termsignal == Base.SIGTERM
+            @test String(take!(stdout)) == "received SIGINT\nreceived SIGTERM\n"
         end
     end
 else
