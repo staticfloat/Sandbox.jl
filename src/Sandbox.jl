@@ -124,12 +124,18 @@ for f in (:run, :success)
             ret = $f(cmd; kwargs...)
 
             # If we were using temporary IOBuffers, write the result out to `config.std{out,err}`
-            if isa(temp_stdout, IOBuffer)
-                write(config.stdout, take!(temp_stdout))
+            @async begin
+                if isa(ret, Base.Process)
+                    wait(ret)
+                end
+                if isa(temp_stdout, IOBuffer)
+                    write(config.stdout, take!(temp_stdout))
+                end
+                if isa(temp_stderr, IOBuffer)
+                    write(config.stderr, take!(temp_stderr))
+                end
             end
-            if isa(temp_stderr, IOBuffer)
-                write(config.stderr, take!(temp_stderr))
-            end
+            yield()
             return ret
         end
     end
