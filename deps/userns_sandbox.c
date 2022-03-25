@@ -178,6 +178,37 @@ static int islink(const char * path) {
   return S_ISLNK(path_stat.st_mode);
 }
 
+/**** Signal handling *****
+ *
+ * We will support "passing through" signals to the child process transparently,
+ * for a predefined set of signals, which we set up here.  The signal chain will
+ * pass from the 'outer' sandbox process (e.g. the parent of `clone()`) to the
+ * 'inner' sandbox process (e.g. the parent of `fork()`), and finally to the
+ * actual target process (e.g. the child of `fork()`).
+ */
+
+pid_t child_pid;
+static void signal_passthrough(int sig) {
+  kill(child_pid, sig);
+}
+
+// The list of signals that we will forward to our child process
+int forwarded_signals[] = {
+  SIGHUP,
+  SIGPIPE,
+  SIGSTOP,
+  SIGINT,
+  SIGTERM,
+  SIGUSR1,
+  SIGUSR2,
+};
+
+static void setup_signal_forwarding() {
+  for (int idx=0; idx<sizeof(forwarded_signals)/sizeof(int); idx++) {
+    signal(forwarded_signals[idx], signal_passthrough);
+  }
+}
+
 /**** User namespaces *****
  *
  * For a general overview on user namespaces, see the corresponding manual page
@@ -472,8 +503,7 @@ static void mount_the_world(const char * root_dir,
 /*
  * Sets up the chroot jail, then executes the target executable.
  */
-static int sandbox_main(const char * root_dir, const char * new_cd, int sandbox_argc, char **sandbox_argv) {
-  pid_t pid;
+static int sandbox_main(const char * root_dir, const char * new_cd, int sandbox_argc, char **sandbox_argv, int *parent_pipe) {
   int status;
 
   // One of the few places where we need to not use `""`, but instead expand it to `"/"`
@@ -509,8 +539,7 @@ static int sandbox_main(const char * root_dir, const char * new_cd, int sandbox_
   }
 
   // When the main pid dies, we exit.
-  pid_t main_pid;
-  if ((main_pid = fork()) == 0) {
+  if ((child_pid = fork()) == 0) {
     if (verbose) {
       fprintf(stderr, "About to run `%s` ", sandbox_argv[0]);
       int argc_i;
@@ -528,6 +557,9 @@ static int sandbox_main(const char * root_dir, const char * new_cd, int sandbox_
     _exit(1);
   }
 
+  // We want to pass signals through to our child
+  setup_signal_forwarding();
+
   // Let's perform normal init functions, handling signals from orphaned
   // children, etc
   sigset_t waitset;
@@ -540,9 +572,24 @@ static int sandbox_main(const char * root_dir, const char * new_cd, int sandbox_
 
     pid_t reaped_pid;
     while ((reaped_pid = waitpid(-1, &status, 0)) != -1) {
-      if (reaped_pid == main_pid) {
-        // If it was the main pid that exited, return as well.
-        return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+      if (reaped_pid == child_pid) {
+        // If it was the main pid that exited, we're going to exit too.
+        // If we died of a signal, return that signal + 256, which we will
+        // notice on the other end as a signal.
+        if (WIFSIGNALED(status)) {
+          unsigned int reported_exit_code = 256 + WTERMSIG(status);
+          check(sizeof(unsigned int) == write(parent_pipe[1], &reported_exit_code, sizeof(unsigned int)));
+          return 0;
+        }
+        if (WIFEXITED(status)) {
+          // Normal exits get reported in a more straightforward fashion
+          unsigned int reported_exit_code = WEXITSTATUS(status);
+          check(sizeof(unsigned int) == write(parent_pipe[1], &reported_exit_code, sizeof(unsigned int)));
+          return 0;
+        }
+
+        // Unsure what's going on here, but it isn't good.
+        check(-1);
       }
     }
   }
@@ -559,8 +606,6 @@ static void print_help() {
   fputs("  mkdir -p /tmp/workspace\n", stderr);
   fputs("  /tmp/sandbox --verbose --rootfs $rootfs_path --workspace /tmp/workspace:/workspace --cd /workspace /bin/bash\n", stderr);
 }
-
-static void sigint_handler() { _exit(0); }
 
 /*
  * Let's get this party started.
@@ -775,10 +820,9 @@ int main(int sandbox_argc, char **sandbox_argv) {
   // new, cloned process that is in a container process. We will use a pipe for synchronization.
   // The regular SIGSTOP method does not work because container-inits don't receive STOP or KILL
   // signals from within their own pid namespace.
-  int child_block[2], parent_block[2];
-  check(0 == pipe(child_block));
-  check(0 == pipe(parent_block));
-  pid_t pid;
+  int child_pipe[2], parent_pipe[2];
+  check(0 == pipe(child_pipe));
+  check(0 == pipe(parent_pipe));
 
   if (execution_mode == PRIVILEGED_CONTAINER_MODE) {
     // We dissociate ourselves from the typical mount namespace.  This gives us the freedom
@@ -798,12 +842,12 @@ int main(int sandbox_argc, char **sandbox_argv) {
 
   // We want to request a new PID space, a new mount space, and a new user space
   int clone_flags = CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUSER | CLONE_NEWUTS | SIGCHLD;
-  if ((pid = syscall(SYS_clone, clone_flags, 0, 0, 0, 0)) == 0) {
+  if ((child_pid = syscall(SYS_clone, clone_flags, 0, 0, 0, 0)) == 0) {
     // If we're in here, we have become the "child" process, within the container.
 
     // Get rid of the ends of the synchronization pipe that I'm not going to use
-    close(child_block[1]);
-    close(parent_block[0]);
+    close(child_pipe[1]);
+    close(parent_pipe[0]);
 
     // N.B: Capabilities in the original user namespaces are now dropped
     // The kernel may have decided to reset our dumpability, because of
@@ -812,14 +856,11 @@ int main(int sandbox_argc, char **sandbox_argv) {
     // to configure the sandbox, so reset dumpability.
     prctl(PR_SET_DUMPABLE, 1, 0, 0, 0);
 
-    // Make sure ^C actually kills this process. By default init ignores
-    // all signals.
-    signal(SIGINT, sigint_handler);
-
     // Tell the parent we're ready, and wait until it signals that it's done
     // setting up our PID/GID mapping in configure_user_namespace()
-    close(parent_block[1]);
-    check(0 == read(child_block[0], NULL, 1));
+    check(1 == write(parent_pipe[1], "X", 1));
+    char buff = 0;
+    check(sizeof(char) == read(child_pipe[0], (void *)&buff, sizeof(char)));
 
     if (execution_mode == PRIVILEGED_CONTAINER_MODE) {
       // If we are in privileged container mode, let's go ahead and drop back
@@ -843,41 +884,64 @@ int main(int sandbox_argc, char **sandbox_argv) {
     }
 
     // Finally, we begin invocation of the target program.
-    return sandbox_main(sandbox_root, new_cd, sandbox_argc, sandbox_argv);
+    return sandbox_main(sandbox_root, new_cd, sandbox_argc, sandbox_argv, parent_pipe);
   }
 
   // If we're out here, we are still the "parent" process.  The Prestige lives on.
 
   // Check to make sure that the clone actually worked
-  check(pid != -1);
+  check(child_pid != -1);
+
+  // We want to pass signals through to our child PID
+  setup_signal_forwarding();
 
   // Get rid of the ends of the synchronization pipe that I'm not going to use.
-  close(child_block[0]);
-  close(parent_block[1]);
+  close(child_pipe[0]);
+  close(parent_pipe[1]);
 
   // Wait until the child is ready to be configured.
-  check(0 == read(parent_block[0], NULL, 1));
+  char buff = 0;
+  check(sizeof(char) == read(parent_pipe[0], (void *)&buff, sizeof(char)));
   if (verbose) {
-    fprintf(stderr, "Child Process PID is %d\n", pid);
+    fprintf(stderr, "Child Process PID is %d\n", child_pid);
   }
 
   // Configure user namespace for the child PID.
-  configure_user_namespace(pid, uid, gid, dst_uid, dst_gid);
+  configure_user_namespace(child_pid, uid, gid, dst_uid, dst_gid);
 
   // Signal to the child that it can now continue running.
-  close(child_block[1]);
+  check(1 == write(child_pipe[1], "X", 1));
 
   // Wait until the child exits.
-  check(pid == waitpid(pid, &status, 0));
-  check(WIFEXITED(status));
-  if (verbose) {
-    fprintf(stderr, "Child Process exited, exit code %d\n", WEXITSTATUS(status));
-  }
+  check(child_pid == waitpid(child_pid, &status, 0));
+
+  // Receive termination signal
+  unsigned int child_exit_code = 0;
+  check(sizeof(unsigned int) == read(parent_pipe[0], (void *)&child_exit_code, sizeof(unsigned int)));
 
   // Give back the terminal to the parent
   signal(SIGTTOU, SIG_IGN);
   tcsetpgrp(0, pgrp);
 
-  // Return the error code of the child
-  return WEXITSTATUS(status);
+  // The child sandbox should alway exit cleanly, with a zero exit status.
+  // The sandboxed executable's exit value will be reported via the pipes
+  check(WIFEXITED(status));
+  check(WEXITSTATUS(status) == 0);
+
+  // We encode signal death as 256 + signal
+  if (child_exit_code >= 256) {
+    int child_signal = child_exit_code - 256;
+    if (verbose) {
+      fprintf(stderr, "Child Process %d signaled %d\n", child_pid, child_signal);
+    }
+
+    // Kill ourselves with the same signal
+    signal(child_signal, SIG_DFL);
+    check(raise(child_signal));
+  } else {
+    if (verbose) {
+      fprintf(stderr, "Child Process %d exited with code %d\n", child_pid, child_exit_code);
+    }
+    return child_exit_code;
+  }
 }
