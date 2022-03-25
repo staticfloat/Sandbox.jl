@@ -773,6 +773,9 @@ int main(int sandbox_argc, char **sandbox_argv) {
         break;
       case 'e':
         entrypoint = strdup(optarg);
+        if (verbose) {
+          fprintf(stderr, "Parsed --entrypoint as \"%s\"\n", entrypoint);
+        }
         break;
       case 't':
         tmpfs_size = strdup(optarg);
@@ -782,6 +785,9 @@ int main(int sandbox_argc, char **sandbox_argv) {
         break;
       case 'H':
         hostname = strdup(optarg);
+        if (verbose) {
+          fprintf(stderr, "Parsed --hostname as \"%s\"\n", hostname);
+        }
         break;
       default:
         fputs("getoptlong defaulted?!\n", stderr);
