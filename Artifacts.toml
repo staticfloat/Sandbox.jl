@@ -15,12 +15,12 @@ lazy = true
     url = "https://github.com/staticfloat/Sandbox.jl/releases/download/julia-python3-77eae3ba/julia-python3.tar.gz"
 
 [debian-minimal-rootfs]
-git-tree-sha1 = "f2dd967ccbf4ab29781388f5848f8d17a4a4e0bc"
+git-tree-sha1 = "f95ec236cb14157ed9f1e34216e20addde333cb6"
 lazy = true
 
     [[debian-minimal-rootfs.download]]
-    sha256 = "7e5f2625e6ca9a105430e0a505896184b503dfc3a7ce15916d2b8dca0391e65d"
-    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v4.4/debian_minimal.x86_64.tar.gz"
+    sha256 = "167169c8890074e0629dba7b6ba0369d2958cdf0bd446ffb279b4dcf788a2cb9"
+    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.7/debian_minimal.x86_64.tar.gz"
 
 [julia-alpine-rootfs]
 git-tree-sha1 = "2a09164e817e43448ff352b34e601f5446e8be7e"
