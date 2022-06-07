@@ -51,7 +51,7 @@ include("Docker.jl")
 # Load the UserNamespace executor
 include("UserNamespaces.jl")
 
-all_executors = Type{<:SandboxExecutor}[
+const all_executors = Type{<:SandboxExecutor}[
     # We always prefer the UserNamespaces executor, if we can use it,
     # and the unprivileged one most of all.  Only after that do we try `docker`.
     UnprivilegedUserNamespacesExecutor,
@@ -89,16 +89,15 @@ function select_executor(verbose::Bool)
     error("Could not find any available executors for $(triplet(HostPlatform()))!")
 end
 
-_preferred_executor = nothing
+const _preferred_executor = Ref{Union{Nothing, (x->Type{x}).(all_executors)...}}(nothing)
 const _preferred_executor_lock = ReentrantLock()
 function preferred_executor(;verbose::Bool = false)
     lock(_preferred_executor_lock) do
         # If we've already asked this question, return the old answer
-        global _preferred_executor
-        if _preferred_executor === nothing
-            _preferred_executor = select_executor(verbose)
+        if _preferred_executor[] === nothing
+            _preferred_executor[] = select_executor(verbose)
         end
-        return _preferred_executor
+        return _preferred_executor[]
     end
 end
 
