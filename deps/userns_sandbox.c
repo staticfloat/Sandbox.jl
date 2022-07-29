@@ -370,11 +370,11 @@ static void bind_mount(const char *src, const char *dest, char read_only) {
   }
 }
 
-static void bind_host_node(const char *root_dir, const char *name, char read_only) {
+static void bind_host_node(const char *root_dir, const char *name) {
   char path[PATH_MAX];
   if (access(name, F_OK) == 0) {
     snprintf(path, sizeof(path), "%s/%s", root_dir, name);
-    bind_mount(name, path, read_only);
+    bind_mount(name, path, FALSE);
   }
 }
 
@@ -388,15 +388,12 @@ static void mount_dev(const char * root_dir) {
 
   // These are all things that should exist in the host environment, but may not
   // We use `bind_host_node()` to bindmount them into our sandbox if they exist.
-  bind_host_node(root_dir, "/dev/null", FALSE);
-  bind_host_node(root_dir, "/dev/tty", FALSE);
-  bind_host_node(root_dir, "/dev/zero", FALSE);
-  bind_host_node(root_dir, "/dev/random", FALSE);
-  bind_host_node(root_dir, "/dev/urandom", FALSE);
-  bind_host_node(root_dir, "/dev/shm", FALSE);
-  
-  // Bindmount the sysfs, but make it read-only
-  bind_host_node(root_dir, "/sys", TRUE);
+  bind_host_node(root_dir, "/dev/null");
+  bind_host_node(root_dir, "/dev/tty");
+  bind_host_node(root_dir, "/dev/zero");
+  bind_host_node(root_dir, "/dev/random");
+  bind_host_node(root_dir, "/dev/urandom");
+  bind_host_node(root_dir, "/dev/shm");
 
   // /dev/pts and /dev/ptmx are more special; we actually mount a new filesystem
   // on /dev/pts, and then bind-mount /dev/pts/ptmx to /dev/ptmx within the
