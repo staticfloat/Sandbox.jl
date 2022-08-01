@@ -516,6 +516,12 @@ static void mount_the_world(const char * root_dir,
   // this mehod at all.sta
   mount_overlay(root_dir, root_dir, "rootfs", persist_dir, uid, gid);
 
+  // Now that we've registered persist_dit put /proc back in its place in the big world.
+  // This is necessary for certain libc APIs to function correctly again.
+  if (strcmp(persist_dir, "/proc") == 0) {
+    mount_procfs("", uid, gid);
+  }
+
   // Mount all of our read-only mounts
   mount_maps(root_dir, shard_maps, TRUE);
 
@@ -527,13 +533,6 @@ static void mount_the_world(const char * root_dir,
 
   // Mount all our read-write mounts (workspaces)
   mount_maps(root_dir, workspaces, FALSE);
-
-  // Once we're done with that, put /proc back in its place in the big world.
-  // This is not strictly necessary since if all goes well, we're going to
-  // `pivot_root()` into the rootfs, but it helps with debugging.
-  if (strcmp(persist_dir, "/proc") == 0) {
-    mount_procfs("", uid, gid);
-  }
 }
 
 /*
