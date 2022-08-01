@@ -1,17 +1,14 @@
 # When we are a child, we do the following:
 # 1. Set up a temp directory that we can write to.
-# 2. Copy the contents of our package from `/app` (which is read-only) to our temp
-#    directory (which is read-and-write).
-# 3. Delete any manifest files in the temp directory,.
+# 2. Copy the contents of package's project from `/project` (which is read-only)
+#    to our temp directory (which is read-and-write).
+# 3. Delete any manifest files in the temp directory (which may refer to host paths).
 # 4. Instantiate the environment inside our temp directory.
-original_app_directory = "/app" # this is read-only; we cannot write to this directory
+original_app_directory = "/project" # this is read-only; we cannot write to this directory
 new_app_directory = mktempdir(; cleanup = true) # we have write access to this directory
-for element in readdir(original_app_directory)
-    old_path = joinpath(original_app_directory, element)
-    new_path = joinpath(new_app_directory,      element)
-    cp(old_path, new_path; force = true)
-end
+cp(original_app_directory, new_app_directory; force=true)
 rm.(joinpath.(Ref(new_app_directory), Base.manifest_names); force = true)
+
 using Pkg
 Pkg.activate(new_app_directory)
 Pkg.instantiate()
