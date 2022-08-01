@@ -32,8 +32,11 @@ using Test, Sandbox, Scratch, Pkg
                     "/" => rootfs_dir,
                     # Mount our package in at its own location
                     "/app" => pkgdir,
-                    # On the off-chance that we're using a custom `sandbox`, make sure it's available at the path
-                    # that the preferences set in `/app/Project.toml` will expect
+                    # Mount our current active project, which may contain a local
+                    # preferences file with a custom sandbox path.
+                    "/project" => dirname(Base.active_project()),
+                    # On the off-chance that we're using a custom `sandbox`,
+                    # make sure it's available at the path that the project will expect
                     sandbox_dir => sandbox_dir,
                 )
 
@@ -74,7 +77,7 @@ using Test, Sandbox, Scratch, Pkg
                     gid = Sandbox.getgid(),
                 )
 
-                cmd = `/bin/sh -c "julia --color=yes --project test/nested/nested_child.jl"`
+                cmd = `/bin/sh -c "julia --color=yes test/nested/nested_child.jl"`
                 with_executor(executor) do exe
                     @test success(exe, config, cmd)
                 end
