@@ -370,7 +370,7 @@ static void bind_mount(const char *src, const char *dest, char read_only) {
     stat(resolved_src, &src_stat);
 
     struct mntent *mnt = NULL;
-    FILE * mtab = setmntent("/etc/mtab", "r");
+    FILE * mtab = setmntent("/proc/self/mounts", "r");
     check(mtab != NULL);
     while (mnt = getmntent(mtab)) {
         struct stat dev_stat;
