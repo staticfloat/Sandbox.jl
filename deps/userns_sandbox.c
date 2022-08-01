@@ -149,6 +149,8 @@ static void mkpath(const char * dir) {
     closedir(dir_obj);
     return;
   }
+  errno = 0;
+
   // Otherwise, first make sure our parent exists.  Note that dirname()
   // clobbers its input, so we copy to a temporary variable first. >:|
   char dir_dirname[PATH_MAX];
