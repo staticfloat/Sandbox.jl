@@ -68,12 +68,12 @@ Then run it, mounting in a rootfs with a workspace and no other read-only maps:
 #include <unistd.h>
 #include <dirent.h>
 #include <libgen.h>
-#include <sys/stat.h>
 #include <sys/reboot.h>
 #include <linux/reboot.h>
 #include <linux/limits.h>
 #include <getopt.h>
 #include <byteswap.h>
+#include <mntent.h>
 
 /**** Global Variables ***/
 #define TRUE 1
@@ -357,17 +357,49 @@ static void bind_mount(const char *src, const char *dest, char read_only) {
   // We don't expect workspaces to have any submounts in normal operation.
   // However, for runshell(), workspace could be an arbitrary directory,
   // including one with sub-mounts, so allow that situation with MS_REC.
+  check(0 == mount(resolved_src, dest, "", MS_BIND|MS_REC, NULL));
+
+  // remount to read-only. this requires a separate remount:
+  // https://git.kernel.org/pub/scm/utils/util-linux/util-linux.git/commit/?id=9ac77b8a78452eab0612523d27fee52159f5016a
+  // during such a remount, we're not allowed to clear locked mount flags:
+  // https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=9566d6742852c527bf5af38af5cbb878dad75705
   if (read_only) {
-    // we only really care about read-only, but we need to make sure to be stricter
-    // than our parent mount. if the parent mount is noexec, we're out of luck,
-    // since we do need to execute these files. however, we don't really have a need
-    // for suid (only one uid) or device files (none in the image), so passing those
-    // extra flags is harmless.  If we ever cared in the future, the thing to do
-    // would to do would be to read `/proc/self/fdinfo` or the directory, find the
-    // `mnt_id` and extract the correct flags from `/proc/self/mountinfo`.
-    check(0 == mount(resolved_src, dest, "", MS_BIND|MS_REC|MS_RDONLY|MS_NODEV|MS_NOSUID, NULL));
-  } else {
-    check(0 == mount(resolved_src, dest, "", MS_BIND|MS_REC, NULL));
+    // we cannot apply locked mount flags blindly, because they change behaviour of the
+    // mount (e.g. noexec), so figure out which ones we need by looking at mtab.
+    struct stat src_stat;
+    stat(resolved_src, &src_stat);
+
+    struct mntent *mnt = NULL;
+    FILE * mtab = setmntent("/etc/mtab", "r");
+    check(mtab != NULL);
+    while (mnt = getmntent(mtab)) {
+        struct stat dev_stat;
+        check(0 == stat(mnt->mnt_dir, &dev_stat));
+        if (dev_stat.st_dev == src_stat.st_dev)
+            break;
+    }
+    endmntent(mtab);
+    check(mnt != NULL);
+
+    int locked_flags = 0;
+    char *mnt_opt;
+    mnt_opt = strtok(mnt->mnt_opts, ",");
+    while (mnt_opt != NULL) {
+        if (strcmp(mnt_opt, "nodev") == 0)
+            locked_flags |= MS_NODEV;
+        else if (strcmp(mnt_opt, "nosuid") == 0)
+            locked_flags |= MS_NOSUID;
+        else if (strcmp(mnt_opt, "noexec") == 0)
+            locked_flags |= MS_NOEXEC;
+        else if (strcmp(mnt_opt, "noatime") == 0)
+            locked_flags |= MS_NOATIME;
+        else if (strcmp(mnt_opt, "nodiratime") == 0)
+            locked_flags |= MS_NODIRATIME;
+        else if (strcmp(mnt_opt, "relatime") == 0)
+            locked_flags |= MS_RELATIME;
+        mnt_opt = strtok(NULL, ",");
+    }
+    check(0 == mount(resolved_src, dest, "", MS_BIND|MS_REMOUNT|MS_RDONLY|locked_flags, NULL));
   }
 }
 
