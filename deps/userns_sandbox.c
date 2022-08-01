@@ -374,11 +374,20 @@ static void bind_mount(const char *src, const char *dest, char read_only) {
     check(mtab != NULL);
     while (mnt = getmntent(mtab)) {
         struct stat dev_stat;
-        check(0 == stat(mnt->mnt_dir, &dev_stat));
-        if (dev_stat.st_dev == src_stat.st_dev)
+        // It's possible that we try to stat() something that we're
+        // not allowed to look at; if that occurs, skip it, hoping
+        // that it's not the mount we're actually interested in.
+        if (stat(mnt->mnt_dir, &dev_stat) == 0 &&
+            dev_stat.st_dev == src_stat.st_dev)
             break;
+
+        // Don't let a non-matching `mnt` leak through, in the event
+        // that we never find the device the mount belongs to.
+        mnt = NULL;
     }
     endmntent(mtab);
+
+    // This will fail if we never found the matching `mnt`.
     check(mnt != NULL);
 
     int locked_flags = 0;
