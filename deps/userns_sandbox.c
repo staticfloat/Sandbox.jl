@@ -355,10 +355,7 @@ static void bind_mount(const char *src, const char *dest, char read_only) {
   // We don't expect workspaces to have any submounts in normal operation.
   // However, for runshell(), workspace could be an arbitrary directory,
   // including one with sub-mounts, so allow that situation with MS_REC.
-  check(0 == mount(resolved_src, dest, "", MS_BIND|MS_REC, NULL));
-
   if (read_only) {
-    // remount to read-only, nodev, suid.
     // we only really care about read-only, but we need to make sure to be stricter
     // than our parent mount. if the parent mount is noexec, we're out of luck,
     // since we do need to execute these files. however, we don't really have a need
@@ -366,7 +363,9 @@ static void bind_mount(const char *src, const char *dest, char read_only) {
     // extra flags is harmless.  If we ever cared in the future, the thing to do
     // would to do would be to read `/proc/self/fdinfo` or the directory, find the
     // `mnt_id` and extract the correct flags from `/proc/self/mountinfo`.
-    check(0 == mount(resolved_src, dest, "", MS_BIND|MS_REMOUNT|MS_RDONLY|MS_NODEV|MS_NOSUID, NULL));
+    check(0 == mount(resolved_src, dest, "", MS_BIND|MS_REC|MS_RDONLY|MS_NODEV|MS_NOSUID, NULL));
+  } else {
+    check(0 == mount(resolved_src, dest, "", MS_BIND|MS_REC, NULL));
   }
 }
 
@@ -394,7 +393,7 @@ static void mount_dev(const char * root_dir) {
   bind_host_node(root_dir, "/dev/random", FALSE);
   bind_host_node(root_dir, "/dev/urandom", FALSE);
   bind_host_node(root_dir, "/dev/shm", FALSE);
-  
+
   // Bindmount the sysfs, but make it read-only
   bind_host_node(root_dir, "/sys", TRUE);
 
