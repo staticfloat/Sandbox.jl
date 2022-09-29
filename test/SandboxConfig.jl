@@ -1,7 +1,7 @@
 using Test, LazyArtifacts, Sandbox
 
 @testset "SandboxConfig" begin
-    rootfs_dir = Sandbox.alpine_rootfs()
+    rootfs_dir = Sandbox.debian_rootfs()
 
     @testset "minimal config" begin
         config = SandboxConfig(Dict("/" => rootfs_dir))

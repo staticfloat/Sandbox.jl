@@ -17,7 +17,7 @@ function print_if_nonempty(stderr::Vector{UInt8})
     return true
 end
 
-rootfs_dir = Sandbox.alpine_rootfs()
+rootfs_dir = Sandbox.debian_rootfs()
 for executor in all_executors
     if !executor_available(executor)
         @error("Skipping $(executor) tests, as it does not seem to be available")
@@ -307,25 +307,9 @@ for executor in all_executors
                     ro_mappings["/etc/resolv.conf"] = resolv_conf
                 end
 
-                config = SandboxConfig(
-                    ro_mappings,
-                    Dict("/tmp/rw_dir" => rw_dir),
-                )
-
-                # Test that we can use `wget` (née busybox) within the alpine rootfs to download something
+                # Do a test with the debian rootfs where we try to use `apt` to install `curl`, then use that to download something.
                 socrates_url = "https://github.com/staticfloat/small_bin/raw/master/socrates.tar.xz"
                 socrates_hash = "61bcf109fcb749ee7b6a570a6057602c08c836b6f81091eab7aa5f5870ec6475"
-                with_executor(executor) do exe
-                    @test success(exe, config, `/bin/sh -c "wget -q $(socrates_url) -O /tmp/rw_dir/$(basename(socrates_url))"`)
-                end
-
-                socrates_path = joinpath(rw_dir, basename(socrates_url))
-                @test isfile(socrates_path)
-                @test open(io -> bytes2hex(sha256(io)), socrates_path) == socrates_hash
-                rm(socrates_path; force=true)
-
-                # Do another test with the debian rootfs where we try to use `apt`
-                ro_mappings["/"] = Sandbox.debian_rootfs()
                 config = SandboxConfig(
                     ro_mappings,
                     Dict("/tmp/rw_dir" => rw_dir),
@@ -334,6 +318,7 @@ for executor in all_executors
                 with_executor(executor) do exe
                     @test success(exe, config, `/bin/sh -c "apt update && apt install -y curl && curl -L $(socrates_url) -o /tmp/rw_dir/$(basename(socrates_url))"`)
                 end
+                socrates_path = joinpath(rw_dir, basename(socrates_url))
                 @test isfile(socrates_path)
                 @test open(io -> bytes2hex(sha256(io)), socrates_path) == socrates_hash
             end

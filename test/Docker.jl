@@ -21,9 +21,9 @@ if executor_available(DockerExecutor)
             timestamps = Sandbox.load_timestamps()
             @test timestamps["foo"] == 1.0
 
-            # Next, let's actually create a docker image out of our alpine rootfs image
+            # Next, let's actually create a docker image out of our debian rootfs image
             mktempdir() do rootfs_path
-                cp(Sandbox.alpine_rootfs(), rootfs_path; force=true)
+                cp(Sandbox.debian_rootfs(), rootfs_path; force=true)
                 @test Sandbox.should_build_docker_image(rootfs_path, uid, gid)
                 @test_logs (:info, r"Building docker image") match_mode=:any begin
                     Sandbox.build_docker_image(rootfs_path, uid, gid; verbose=true)
@@ -36,7 +36,7 @@ if executor_available(DockerExecutor)
                 end
 
                 # Change the content
-                chmod(joinpath(rootfs_path, "bin", "busybox"), 0o775)
+                chmod(joinpath(rootfs_path, "bin", "bash"), 0o775)
                 @test Sandbox.should_build_docker_image(rootfs_path, uid, gid)
                 @test_logs (:info, r"Building docker image") match_mode=:any begin
                     Sandbox.build_docker_image(rootfs_path, uid, gid; verbose=true)

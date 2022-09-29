@@ -17,7 +17,7 @@ Pkg.precompile()
 # Load Sandbox, then try to launch a nested sandbox
 using Sandbox, Test
 
-rootfs_dir = Sandbox.alpine_rootfs()
+rootfs_dir = Sandbox.debian_rootfs()
 
 config = SandboxConfig(
     # This rootfs was downloaded within the sandbox in the `Pkg.instantiate()` above

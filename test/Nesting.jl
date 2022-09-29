@@ -1,8 +1,23 @@
-using Test, Sandbox, Scratch, Pkg
+using Test, Sandbox, Scratch, Pkg, Base.BinaryPlatforms
+
+function get_nestable_julia(target_arch = arch(HostPlatform()), version=v"1.8.1")
+    julia_dir = @get_scratch!("julia-$(target_arch)-$(version)")
+    if !isfile(joinpath(julia_dir, "julia-$(version)", "bin", "julia"))
+        arch_folder = target_arch
+        if target_arch == "x86_64"
+            arch_folder = "x64"
+        elseif target_arch == "i686"
+            arch_folder = "x86"
+        end
+        url = "https://julialang-s3.julialang.org/bin/linux/$(arch_folder)/$(version.major).$(version.minor)/julia-$(version)-linux-$(target_arch).tar.gz"            
+        Pkg.PlatformEngines.download_verify_unpack(url, nothing, julia_dir; ignore_existence=true, verbose=true)
+    end
+    return joinpath(julia_dir, "julia-$(version)")
+end
 
 @testset "Nesting Sandbox.jl" begin
     all_executors = Sandbox.all_executors
-    rootfs_dir = Sandbox.julia_alpine_rootfs()
+    rootfs_dir = Sandbox.debian_rootfs()
     sandbox_dir = dirname(Sandbox.UserNSSandbox_jll.sandbox_path)
     for executor in all_executors
         if !executor_available(executor)
@@ -35,6 +50,8 @@ using Test, Sandbox, Scratch, Pkg
                     # Mount our current active project, which may contain a local
                     # preferences file with a custom sandbox path.
                     "/project" => dirname(Base.active_project()),
+                    # Mount in a Julia that can run in this sandbox
+                    "/usr/local/julia" => get_nestable_julia(),
                     # On the off-chance that we're using a custom `sandbox`,
                     # make sure it's available at the path that the project will expect
                     sandbox_dir => sandbox_dir,
