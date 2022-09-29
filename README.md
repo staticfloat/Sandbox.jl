@@ -29,19 +29,17 @@ These capabilities were originally built for [BinaryBuilder.jl](https://github.c
 ## Basic usage
 
 To make use of this toolkit, you will need to have a root filesystem image that you want to use.
-This package comes with an Alpine minimal rootfs that can be used for quick tests, to launch `/bin/sh` in an interactive shell, run the following:
+This package comes with a minimal Debian rootfs that can be used for quick tests, to launch `/bin/bash` in an interactive shell, run the following:
 
 ```julia
 using Sandbox
 
 config = SandboxConfig(
-    Dict("/" => Sandbox.alpine_rootfs());
-    stdin=Base.stdin,
-    stdout=Base.stdout,
-    stderr=Base.stderr,
+    Dict("/" => Sandbox.debian_rootfs());
+    stdin, stdout, stderr,
 )
 with_executor() do exe
-    run(exe, config, `/bin/sh`)
+    run(exe, config, `/bin/bash -l`)
 end
 ```
 
@@ -50,3 +48,5 @@ While this launches an interactive session due to hooking up `stdout`/`stdin`, o
 ## Getting more rootfs images
 
 To use more interesting rootfs images, you can either create your own using tools such as [`debootstrap`](https://wiki.debian.org/Debootstrap) or you can pull one from docker by using the `pull_docker_image()` function defined within this package.  See the [`contrib`](contrib/) directory for examples of both.
+
+You can also check out the latest releases of the [`JuliaCI/rootfs-images` repository](https://github.com/JuliaCI/rootfs-images/), which curates a collection of rootfs images for use in CI workloads.

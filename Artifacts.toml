@@ -1,34 +1,42 @@
-[alpine-rootfs]
-git-tree-sha1 = "562768a40e93d27b79fbedf9cfa7883409d494ea"
+[debian-minimal-rootfs-x86_64]
+git-tree-sha1 = "4d66e139e0bcfdfa5ec6a8942a938e754e17860f"
 lazy = true
 
-    [[alpine-rootfs.download]]
-    sha256 = "5a588162779446d8e5235bf6fc97588d1e197f44cf64e3a1f88ae828270456a7"
-    url = "https://github.com/alpinelinux/docker-alpine/raw/2f3c3015951938c521e752899a92ecd618e0c05b/x86_64/alpine-minirootfs-3.12.4-x86_64.tar.gz"
+    [[debian-minimal-rootfs-x86_64.download]]
+    sha256 = "da7d20f2c4ada16db37a518fc2328ccf17d45d9b43fbae7d5cfb72fcde25219d"
+    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.45/debian_minimal.x86_64.tar.gz"
 
-[debian-julia-python3-rootfs]
-git-tree-sha1 = "c0f2c53b857189e1c8378bd37c3b620ea4843e07"
+[debian-minimal-rootfs-i686]
+git-tree-sha1 = "80ffa08dc6ab7fbb49ab4ca95c3e167be3127f26"
 lazy = true
 
-    [[debian-julia-python3-rootfs.download]]
-    sha256 = "58b03f624a1a5b1fb52c4d58a7be62df0bf74e26fa3c160cfe0e821adcc6f7de"
-    url = "https://github.com/staticfloat/Sandbox.jl/releases/download/julia-python3-77eae3ba/julia-python3.tar.gz"
+    [[debian-minimal-rootfs-i686.download]]
+    sha256 = "543eb311c6ea551287f67353be1dbb6e4079d991233174a4daab9e34078a9885"
+    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.45/debian_minimal.i686.tar.gz"
 
-[debian-minimal-rootfs]
-git-tree-sha1 = "f95ec236cb14157ed9f1e34216e20addde333cb6"
+[debian-minimal-rootfs-aarch64]
+git-tree-sha1 = "792c9f5b7366dba290cb4cb0755094085d245891"
 lazy = true
 
-    [[debian-minimal-rootfs.download]]
-    sha256 = "167169c8890074e0629dba7b6ba0369d2958cdf0bd446ffb279b4dcf788a2cb9"
-    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.7/debian_minimal.x86_64.tar.gz"
+    [[debian-minimal-rootfs-aarch64.download]]
+    sha256 = "47c1ca4494013acddbff347856f3f61a3d1e0d61d7a04833fb75f2b95e01f9b4"
+    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.45/debian_minimal.aarch64.tar.gz"
 
-[julia-alpine-rootfs]
-git-tree-sha1 = "2a09164e817e43448ff352b34e601f5446e8be7e"
+[debian-minimal-rootfs-armv7l]
+git-tree-sha1 = "eb097fdfa2f3de418da8f631ef5243e0c8ac4845"
 lazy = true
 
-    [[julia-alpine-rootfs.download]]
-    sha256 = "846a3aa9350bf23ca1a2bd862c53eae12e5b570ac06f48242a047134cbba78f1"
-    url = "https://github.com/staticfloat/Sandbox.jl/releases/download/julia-alpine-46e8be7e/julia_alpine.tar.gz"
+    [[debian-minimal-rootfs-armv7l.download]]
+    sha256 = "2d3c5ab50bc9fabceb0d456be35f65128af0f1491fb126165555dd8d8d7e4307"
+    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.45/debian_minimal.armv7l.tar.gz"
+
+[debian-minimal-rootfs-powerpc64le]
+git-tree-sha1 = "245064ccaf65c2a8de08c4766f6362322388eda4"
+lazy = true
+
+    [[debian-minimal-rootfs-powerpc64le.download]]
+    sha256 = "ebbdc54ab02f731738a8a49e237c1e588c191eed3d894b0e3f21cddbac8eba44"
+    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.45/debian_minimal.ppc64le.tar.gz"
 
 [multiarch-rootfs]
 git-tree-sha1 = "b9bc181be08c4a0598539af7ef93340778df527c"

@@ -151,7 +151,7 @@ end
 function probe_executor(executor::SandboxExecutor; verbose::Bool = false, test_read_only_map=false, test_read_write_map=false)
     mktempdir() do tmpdir
         read_only_maps = Dict{String,String}(
-            "/" => alpine_rootfs(),
+            "/" => debian_rootfs(),
         )
         read_write_maps = Dict{String,String}()
 
@@ -194,7 +194,7 @@ function probe_executor(executor::SandboxExecutor; verbose::Bool = false, test_r
             stdout=cmd_stdout,
             stderr=cmd_stderr,
         )
-        user_cmd = `/bin/sh -c "$(inner_cmd)"`
+        user_cmd = `/bin/bash -c "$(inner_cmd)"`
 
         if verbose
             tests = String[]
@@ -268,10 +268,14 @@ function probe_executor(executor::SandboxExecutor; verbose::Bool = false, test_r
 end
 
 # Convenience function for other users who want to do some testing
-alpine_rootfs() = artifact"alpine-rootfs"
-debian_rootfs() = artifact"debian-minimal-rootfs"
-julia_alpine_rootfs() = artifact"julia-alpine-rootfs"
-julia_python3_rootfs() = artifact"debian-julia-python3-rootfs"
-multiarch_rootfs() = artifact"multiarch-rootfs"
+function debian_rootfs(;platform=HostPlatform())
+    return @artifact_str("debian-minimal-rootfs-$(arch(platform))")
+end
+function multiarch_rootfs(;platform=HostPlatform())
+    if arch(platform) != "x86_64"
+        error("multiarch_rootfs only works on x86_64 for now!")
+    end
+    artifact"multiarch-rootfs"
+end
 
 end # module

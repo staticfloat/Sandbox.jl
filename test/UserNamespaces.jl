@@ -14,7 +14,7 @@ if executor_available(UnprivilegedUserNamespacesExecutor)
         end
     end
     @testset "Customize the tempfs size" begin
-        rootfs_dir = Sandbox.alpine_rootfs()
+        rootfs_dir = Sandbox.debian_rootfs()
         read_only_maps = Dict("/" => rootfs_dir)
         read_write_maps = Dict{String, String}()
         env = Dict(
@@ -30,10 +30,9 @@ if executor_available(UnprivilegedUserNamespacesExecutor)
             with_executor(UnprivilegedUserNamespacesExecutor) do exe
                 @test success(exe, config, cmd)
                 @test isempty(take!(stdout))
-                @test strip(String(take!(stderr))) == strip("""
+                @test startswith(strip(String(take!(stderr))), strip("""
                 1+0 records in
-                1+0 records out
-                """)
+                1+0 records out"""))
             end
         end
         @testset "tempfs is too small" begin
@@ -42,17 +41,17 @@ if executor_available(UnprivilegedUserNamespacesExecutor)
             config = SandboxConfig(read_only_maps, read_write_maps, env; tmpfs_size = "10M", stdout, stderr)
             with_executor(UnprivilegedUserNamespacesExecutor) do exe
                 @test !success(exe, config, cmd)
-                @test strip(String(take!(stderr))) == strip("""
+                @test startswith(strip(String(take!(stderr))), strip("""
                 dd: error writing 'sample.txt': No space left on device
                 1+0 records in
-                0+0 records out""")
+                0+0 records out"""))
             end
         end
     end
 
     @testset "Signal Handling" begin
         # This test ensures that killing the child returns a receivable signal
-        config = SandboxConfig(Dict("/" => Sandbox.alpine_rootfs()))
+        config = SandboxConfig(Dict("/" => Sandbox.debian_rootfs()))
         with_executor(UnprivilegedUserNamespacesExecutor) do exe
             p = run(exe, config, ignorestatus(`/bin/sh -c "kill -s TERM \$\$"`))
             @test p.termsignal == Base.SIGTERM
@@ -60,7 +59,7 @@ if executor_available(UnprivilegedUserNamespacesExecutor)
 
         # This test ensures that killing the sandbox executable passes the
         # signal on to the child (which then returns a receivable signal)
-        config = SandboxConfig(Dict("/" => Sandbox.alpine_rootfs()))
+        config = SandboxConfig(Dict("/" => Sandbox.debian_rootfs()))
         with_executor(UnprivilegedUserNamespacesExecutor) do exe
             stdout = IOBuffer()
             stderr = IOBuffer()
