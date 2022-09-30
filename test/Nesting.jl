@@ -46,7 +46,7 @@ end
                     # Mount in the rootfs
                     "/" => rootfs_dir,
                     # Mount our package in at its own location
-                    "/app" => pkgdir,
+                    pkgdir => pkgdir,
                     # Mount our current active project, which may contain a local
                     # preferences file with a custom sandbox path.
                     "/project" => dirname(Base.active_project()),
@@ -89,7 +89,7 @@ end
                     ),
                     # Add the path to `julia` onto the path
                     env;
-                    pwd = "/app",
+                    pwd = pkgdir,
                     uid = Sandbox.getuid(),
                     gid = Sandbox.getgid(),
                 )
