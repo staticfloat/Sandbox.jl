@@ -114,7 +114,7 @@ end
                             "PATH" => "/usr/local/julia/bin:/usr/local/bin:/usr/bin:/bin",
                             "HOME" => "/tmp/readwrite/home",
                         );
-                        pwd = "/app",
+                        pwd = pkgdir,
                         uid = Sandbox.getuid(),
                         gid = Sandbox.getgid(),
                         stderr = stderr,
