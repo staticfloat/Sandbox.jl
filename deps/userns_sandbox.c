@@ -373,17 +373,16 @@ static void bind_mount(const char *src, const char *dest, char read_only) {
     FILE * mtab = setmntent("/proc/self/mounts", "r");
     check(mtab != NULL);
     while (mnt = getmntent(mtab)) {
-        struct stat dev_stat;
-        // It's possible that we try to stat() something that we're
-        // not allowed to look at; if that occurs, skip it, hoping
-        // that it's not the mount we're actually interested in.
-        if (stat(mnt->mnt_dir, &dev_stat) == 0 &&
-            dev_stat.st_dev == src_stat.st_dev)
-            break;
+      struct stat dev_stat;
+      // It's possible that we try to stat() something that we're
+      // not allowed to look at; if that occurs, skip it, hoping
+      // that it's not the mount we're actually interested in.
+      if (stat(mnt->mnt_dir, &dev_stat) == 0 && dev_stat.st_dev == src_stat.st_dev)
+        break;
 
-        // Don't let a non-matching `mnt` leak through, in the event
-        // that we never find the device the mount belongs to.
-        mnt = NULL;
+      // Don't let a non-matching `mnt` leak through, in the event
+      // that we never find the device the mount belongs to.
+      mnt = NULL;
     }
     endmntent(mtab);
 
@@ -394,19 +393,19 @@ static void bind_mount(const char *src, const char *dest, char read_only) {
     char *mnt_opt;
     mnt_opt = strtok(mnt->mnt_opts, ",");
     while (mnt_opt != NULL) {
-        if (strcmp(mnt_opt, "nodev") == 0)
-            locked_flags |= MS_NODEV;
-        else if (strcmp(mnt_opt, "nosuid") == 0)
-            locked_flags |= MS_NOSUID;
-        else if (strcmp(mnt_opt, "noexec") == 0)
-            locked_flags |= MS_NOEXEC;
-        else if (strcmp(mnt_opt, "noatime") == 0)
-            locked_flags |= MS_NOATIME;
-        else if (strcmp(mnt_opt, "nodiratime") == 0)
-            locked_flags |= MS_NODIRATIME;
-        else if (strcmp(mnt_opt, "relatime") == 0)
-            locked_flags |= MS_RELATIME;
-        mnt_opt = strtok(NULL, ",");
+      if (strcmp(mnt_opt, "nodev") == 0)
+        locked_flags |= MS_NODEV;
+      else if (strcmp(mnt_opt, "nosuid") == 0)
+        locked_flags |= MS_NOSUID;
+      else if (strcmp(mnt_opt, "noexec") == 0)
+        locked_flags |= MS_NOEXEC;
+      else if (strcmp(mnt_opt, "noatime") == 0)
+        locked_flags |= MS_NOATIME;
+      else if (strcmp(mnt_opt, "nodiratime") == 0)
+        locked_flags |= MS_NODIRATIME;
+      else if (strcmp(mnt_opt, "relatime") == 0)
+        locked_flags |= MS_RELATIME;
+      mnt_opt = strtok(NULL, ",");
     }
     check(0 == mount(resolved_src, dest, "", MS_BIND|MS_REMOUNT|MS_RDONLY|locked_flags, NULL));
   }
@@ -438,7 +437,7 @@ static void mount_dev(const char * root_dir) {
   bind_host_node(root_dir, "/dev/shm", FALSE);
 
   // Bindmount the sysfs, but make it read-only
-  bind_host_node(root_dir, "/sys", TRUE);
+  bind_host_node(root_dir, "/sys", FALSE);
 
   // /dev/pts and /dev/ptmx are more special; we actually mount a new filesystem
   // on /dev/pts, and then bind-mount /dev/pts/ptmx to /dev/ptmx within the
