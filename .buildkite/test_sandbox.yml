@@ -1,5 +1,5 @@
 steps:
-  - label: ":julia: Test on Julia ${JULIA_VERSION}, local sandbox: ${LOCAL_SANDBOX}"
+  - label: ":julia: Test on Julia ${JULIA_VERSION}, arch ${ARCH}, local sandbox: ${LOCAL_SANDBOX}"
     plugins:
       # Install Julia
       - JuliaCI/julia#v1:
@@ -23,4 +23,4 @@ steps:
     agents:
       queue: "juliaecosystem"
       sandbox.jl: "true"
-      arch: "x86_64"
+      arch: "${ARCH}"

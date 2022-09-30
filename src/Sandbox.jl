@@ -271,11 +271,7 @@ end
 function debian_rootfs(;platform=HostPlatform())
     return @artifact_str("debian-minimal-rootfs-$(arch(platform))")
 end
-function multiarch_rootfs(;platform=HostPlatform())
-    if arch(platform) != "x86_64"
-        error("multiarch_rootfs only works on x86_64 for now!")
-    end
-    artifact"multiarch-rootfs"
-end
+# The multiarch rootfs is truly multiarch
+multiarch_rootfs(;platform=nothing) = artifact"multiarch-rootfs"
 
 end # module

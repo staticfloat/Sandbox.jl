@@ -1,4 +1,4 @@
-using Test, Sandbox, SHA
+using Test, Sandbox, SHA, Base.BinaryPlatforms
 
 all_executors = Sandbox.all_executors
 
@@ -257,8 +257,9 @@ for executor in all_executors
         end
 
         # If we have the docker executor available (necessary to do the initial pull),
-        # let's test launching off of a docker image
-        if executor_available(DockerExecutor)
+        # let's test launching off of a docker image.  Only run this on x86_64 because
+        # docker doesn't (yet) have images with this name for other architectures.
+        if executor_available(DockerExecutor) && arch(HostPlatform()) == "x86_64"
             julia_rootfs = Sandbox.pull_docker_image("julia:alpine")
             @testset "launch from docker image" begin
                 stdout = IOBuffer()
