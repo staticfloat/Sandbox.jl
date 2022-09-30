@@ -7,7 +7,7 @@
 original_app_directory = "/project" # this is read-only; we cannot write to this directory
 new_app_directory = mktempdir(; cleanup = true) # we have write access to this directory
 cp(original_app_directory, new_app_directory; force=true)
-rm.(joinpath.(Ref(new_app_directory), Base.manifest_names); force = true)
+#rm.(joinpath.(Ref(new_app_directory), Base.manifest_names); force = true)
 
 using Pkg
 Pkg.activate(new_app_directory)
