@@ -171,6 +171,10 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
         append!(cmd_string, ["-v", "$(src):$(dst)"])
     end
 
+    # Check for overlay mappings
+    isempty(config.overlay_maps) ||
+        throw(ArgumentError("DockerExecutor does not support overlay mappings"))
+
     # Apply environment mappings, first from `config`, next from `user_cmd`.
     for (k, v) in config.env
         append!(cmd_string, ["-e", "$(k)=$(v)"])

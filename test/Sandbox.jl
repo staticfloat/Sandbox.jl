@@ -165,6 +165,37 @@ for executor in all_executors
             end
         end
 
+        executor <: UserNamespacesExecutor && @testset "overlay maps" begin
+            mktempdir() do dir
+                read_only_dir = joinpath(dir, "read_only")
+                overlay_dir = joinpath(dir, "overlay")
+                mkdir(read_only_dir)
+                mkdir(overlay_dir)
+                stdout = IOBuffer()
+                stderr = IOBuffer()
+                config = SandboxConfig(
+                    Dict("/" => rootfs_dir, "/read_only" => read_only_dir),
+                    overlay_maps = Dict("/read_only" => overlay_dir),
+                    stdout = stdout,
+                    stderr = stderr,
+                    persist = true,
+                )
+                with_executor(executor) do exe
+                    # a read-only map becomes read-write if we've overlaid it
+                    @test success(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
+                    @test String(take!(stdout)) == "aperture\n";
+                    @test print_if_nonempty(take!(stderr))
+                    @test success(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
+                    @test String(take!(stdout)) == "aperture\naperture\n";
+                    @test print_if_nonempty(take!(stderr))
+
+                    # make sure there were no changes to the underlying read-only map
+                    @test !isfile(joinpath(read_only_dir, "science"))
+                    @test isfile(joinpath(overlay_dir, "science"))
+                end
+            end
+        end
+
         @testset "entrypoint" begin
             mktempdir() do dir
                 read_only_dir = joinpath(dir, "read_only")

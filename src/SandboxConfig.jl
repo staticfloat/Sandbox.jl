@@ -15,6 +15,12 @@ Sandbox executors require a configuration to set up the environment properly.
    - Note that some executors may not show perfect live updates; consistency is guaranteed
      only after execution is finished.
 
+- `overlay_maps`: Directories that are used to store changes made to the sandbox filesystem.
+  This can be used to support modifications to `read_only_maps`, much like `persist` is used
+  to support modifications to the root filesystem.
+   - Specified as pairs, e.g. `sandbox_path => host_path`.  All paths must be absolute.
+   - Currently only supported on the user namespace executors.
+
 - `env`: Dictionary mapping of environment variables that should be set within the sandbox.
 
 - `entrypoint`: Executable that gets passed the actual command being run.
@@ -50,6 +56,7 @@ Sandbox executors require a configuration to set up the environment properly.
 struct SandboxConfig
     read_only_maps::Dict{String,String}
     read_write_maps::Dict{String,String}
+    overlay_maps::Dict{String,String}
     env::Dict{String,String}
     entrypoint::Union{String,Nothing}
     pwd::String
@@ -68,6 +75,7 @@ struct SandboxConfig
     function SandboxConfig(read_only_maps::Dict{String,String},
                            read_write_maps::Dict{String,String} = Dict{String,String}(),
                            env::Dict{String,String} = Dict{String,String}();
+                           overlay_maps::Dict{String,String} = Dict{String,String}(),
                            entrypoint::Union{String,Nothing} = nothing,
                            pwd::String = "/",
                            persist::Bool = false,
@@ -90,7 +98,7 @@ struct SandboxConfig
         end
 
         # Don't touch anything that is encrypted; it doesn't play well with user namespaces or docker
-        for path in [values(read_only_maps)...; values(read_write_maps)...]
+        for path in [values(read_only_maps)...; values(read_write_maps)...; values(overlay_maps)...]
             crypt, mountpoint = is_ecryptfs(path; verbose)
             if crypt
                 throw(ArgumentError("Path $(path) is mounted on the ecryptfs filesystem $(mountpoint)!"))
@@ -118,6 +126,6 @@ struct SandboxConfig
             push!(multiarch_formats, platform_qemu_registrations[interp_platforms[platform_idx]])
         end
 
-        return new(read_only_maps, read_write_maps, env, entrypoint, pwd, persist, collect(multiarch_formats), Cint(uid), Cint(gid), tmpfs_size, hostname, stdin, stdout, stderr, verbose)
+        return new(read_only_maps, read_write_maps, overlay_maps, env, entrypoint, pwd, persist, collect(multiarch_formats), Cint(uid), Cint(gid), tmpfs_size, hostname, stdin, stdout, stderr, verbose)
     end
 end
