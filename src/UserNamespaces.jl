@@ -162,7 +162,6 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
 
     # Add in overlay mappings
     for (dst, src) in config.overlay_maps
-        config.persist || error("Cannot use overlay mappings without persistence enabled")
         append!(cmd_string, ["--overlay", "$(src):$(dst)"])
     end
 

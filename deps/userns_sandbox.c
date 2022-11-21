@@ -525,11 +525,10 @@ static void mount_the_world(const char * root_dir,
   // with the same `--persist` argument will allow resuming execution inside of
   // a rootfs with the previous modifications intact.
   if (persist_dir == NULL) {
-    // We know that `/proc` will always be available on basically any Linux
-    // system, so we mount our tmpfs here.  It's also convenient because we
-    // will mount an actual `procfs` over this at the end of this function, so
-    // the overlayfs work directories are completely hidden from view.
-    persist_dir = "/proc";
+    // We know that `/root` will always be available on basically any Linux
+    // system, so we mount our tmpfs here.  This will not be visible in the
+    // sandbox, because it is outside of the directory we'll pivot into.
+    persist_dir = "/root";
 
     // Create tmpfs to store ephemeral changes.  These changes are lost once
     // the `tmpfs` is unmounted, which occurs when all processes within the
@@ -538,7 +537,7 @@ static void mount_the_world(const char * root_dir,
     int n = snprintf(options, 32, "size=%s", tmpfs_size);
     check(0 < n);
     check(n < 31);
-    check(0 == mount("tmpfs", "/proc", "tmpfs", 0, options));
+    check(0 == mount("tmpfs", "/root", "tmpfs", 0, options));
   }
 
   if (verbose) {
@@ -553,12 +552,6 @@ static void mount_the_world(const char * root_dir,
   // this mehod at all.sta
   mount_overlay(root_dir, root_dir, "rootfs", persist_dir, uid, gid, NULL);
 
-  // Now that we've registered persist_dir put /proc back in its place in the big world.
-  // This is necessary for certain libc APIs to function correctly again.
-  if (strcmp(persist_dir, "/proc") == 0) {
-    mount_procfs("", uid, gid);
-  }
-
   // Mount all of our read-only mounts.
   mount_maps(root_dir, shard_maps, TRUE);
 
@@ -572,11 +565,6 @@ static void mount_the_world(const char * root_dir,
   mount_maps(root_dir, workspaces, FALSE);
 
   // Mount overlays.
-  if (persist_dir == NULL) {
-    // the ephemeral persistence dir at /proc has been hidden already
-    fprintf(stderr, "ERROR: Use of --overlay requires --persist");
-    _exit(1);
-  }
   mount_overlays(root_dir, overlays, uid, gid, persist_dir);
 }
 
