@@ -178,7 +178,7 @@ for executor in all_executors
                     overlay_maps = Dict("/read_only" => overlay_dir),
                     stdout = stdout,
                     stderr = stderr,
-                    persist = true,
+                    persist = false,
                 )
                 with_executor(executor) do exe
                     # a read-only map becomes read-write if we've overlaid it
@@ -191,7 +191,7 @@ for executor in all_executors
 
                     # make sure there were no changes to the underlying read-only map
                     @test !isfile(joinpath(read_only_dir, "science"))
-                    @test isfile(joinpath(overlay_dir, "science"))
+                    @test isfile(joinpath(overlay_dir, "upper", "science"))
                 end
             end
         end

@@ -269,20 +269,20 @@ static void configure_user_namespace(pid_t pid, uid_t src_uid, gid_t src_gid,
  * discard any changes made to it when the overlayfs disappears.  This is how we protect our
  * rootfs and shards when mounting from a local filesystem, as well as how we convert a
  * read-only rootfs and shards to a read-write system when mounting from squashfs images.
- * To control where changes are saved, it's possible to specify an `upper_dir`.
+ * The optional `bname` argument can be used to specify a subdirectory of `work_dir` to use.
  */
 static void mount_overlay(const char * src, const char * dest, const char * bname,
-                          const char * work_dir, uid_t uid, gid_t gid,
-                          const char * upper_dir) {
+                          const char * work_dir, uid_t uid, gid_t gid) {
   char upper[PATH_MAX], work[PATH_MAX], opts[3*PATH_MAX+28];
 
   // Construct the location of our upper and work directories
-  if (upper_dir) {
-    snprintf(upper, sizeof(upper), "%s", upper_dir);
-  } else {
+  if (bname) {
     snprintf(upper, sizeof(upper), "%s/upper/%s", work_dir, bname);
+    snprintf(work, sizeof(work), "%s/work/%s", work_dir, bname);
+  } else {
+    snprintf(upper, sizeof(upper), "%s/upper", work_dir);
+    snprintf(work, sizeof(work), "%s/work", work_dir);
   }
-  snprintf(work, sizeof(work), "%s/work/%s", work_dir, bname);
 
   // If `src` or `dest` is "", we actually want it to be "/", so adapt here because
   // this is the only place in the code base where we actually need the slash at the
@@ -494,7 +494,7 @@ static void mount_overlays(const char * dest, struct map_list * overlays,
     }
     snprintf(path, sizeof(path), "%s/%s", dest, inside);
 
-    mount_overlay(path, path, inside, persist_dir, uid, gid, current_entry->outside_path);
+    mount_overlay(path, path, NULL, current_entry->outside_path, uid, gid);
 
     current_entry = current_entry->prev;
   }
@@ -550,7 +550,7 @@ static void mount_the_world(const char * root_dir,
   // without altering the actual rootfs image.  When running in privileged mode,
   // we're mounting before cloning, in unprivileged mode, we clone before calling
   // this mehod at all.sta
-  mount_overlay(root_dir, root_dir, "rootfs", persist_dir, uid, gid, NULL);
+  mount_overlay(root_dir, root_dir, "rootfs", persist_dir, uid, gid);
 
   // Mount all of our read-only mounts.
   mount_maps(root_dir, shard_maps, TRUE);
