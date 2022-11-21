@@ -193,6 +193,10 @@ for executor in all_executors
                     @test !isfile(joinpath(read_only_dir, "science"))
                     @test isfile(joinpath(overlay_dir, "upper", "science"))
                 end
+
+                # JuliaLang/julia#47650: overlayfs' restrictive permissions cause problems
+                Sandbox.chmod_recursive(joinpath(overlay_dir, "work", "work"), 0o700,
+                                        executor <: PrivilegedUserNamespacesExecutor)
             end
         end
 
