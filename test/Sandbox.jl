@@ -124,64 +124,56 @@ for executor in all_executors
             @test String(take!(stdout)) == "pick this up foo\n";
         end
 
-        @testset "read-only mounts are really read-only" begin
+        if executor <: UserNamespacesExecutor
+
+        # TODO: make the Docker executor default to overlaying read-only mounts,
+        #       so that these tests work everywhere (see the entrypoint testset below)
+
+        @testset "read-only mounts support modifications" begin
+            # with persist=false, these changes are ephemeral
             mktempdir() do dir
                 read_only_dir = joinpath(dir, "read_only")
-                read_write_dir = joinpath(dir, "read_write")
                 mkdir(read_only_dir)
-                mkdir(read_write_dir)
                 stdout = IOBuffer()
                 stderr = IOBuffer()
                 config = SandboxConfig(
                     Dict("/" => rootfs_dir, "/read_only" => read_only_dir),
-                    Dict("/read_write" => read_write_dir),
                     stdout = stdout,
                     stderr = stderr,
                     persist = false,
                 )
-                # Modifying the rootfs works, and is temporary; for docker containers this is modifying
-                # the rootfs image, for userns this is all mounted within an overlay backed by a tmpfs,
-                # because we have `persist` set to `false`.
                 with_executor(executor) do exe
-                    @test success(exe, config, `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`)
+                    # a read-only map is mutable from within the sandbox
+                    @test success(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
                     @test String(take!(stdout)) == "aperture\n";
                     @test print_if_nonempty(take!(stderr))
-                    @test success(exe, config, `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`)
+                    @test success(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
                     @test String(take!(stdout)) == "aperture\n";
                     @test print_if_nonempty(take!(stderr))
 
-                    # An actual read-only mount will not allow writing, because it's truly read-only
-                    @test !success(exe, config, ignorestatus(`/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`))
-                    @test occursin("Read-only file system", String(take!(stderr)))
-
-                    # A read-write mount, on the other hand, will be permanent
-                    @test success(exe, config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`)
-                    @test String(take!(stdout)) == "aperture\n";
-                    @test print_if_nonempty(take!(stderr))
-                    @test success(exe, config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`)
-                    @test String(take!(stdout)) == "aperture\naperture\n";
-                    @test print_if_nonempty(take!(stderr))
+                    # make sure there were no changes to the underlying read-only map
+                    @test !isfile(joinpath(read_only_dir, "science"))
                 end
-            end
-        end
 
-        executor <: UserNamespacesExecutor && @testset "overlay maps" begin
+                # JuliaLang/julia#47650: overlayfs' restrictive permissions cause problems
+                Sandbox.chmod_recursive(joinpath(dir), 0o700,
+                                        executor <: PrivilegedUserNamespacesExecutor)
+            end
+
+            # with persist=true, changes are written to the persistence dir
             mktempdir() do dir
                 read_only_dir = joinpath(dir, "read_only")
-                overlay_dir = joinpath(dir, "overlay")
                 mkdir(read_only_dir)
-                mkdir(overlay_dir)
                 stdout = IOBuffer()
                 stderr = IOBuffer()
                 config = SandboxConfig(
                     Dict("/" => rootfs_dir, "/read_only" => read_only_dir),
-                    overlay_maps = Dict("/read_only" => overlay_dir),
                     stdout = stdout,
                     stderr = stderr,
-                    persist = false,
+                    persist = true,
                 )
                 with_executor(executor) do exe
-                    # a read-only map becomes read-write if we've overlaid it
+                    # a read-only map is mutable from within the sandbox
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
                     @test String(take!(stdout)) == "aperture\n";
                     @test print_if_nonempty(take!(stderr))
@@ -191,13 +183,15 @@ for executor in all_executors
 
                     # make sure there were no changes to the underlying read-only map
                     @test !isfile(joinpath(read_only_dir, "science"))
-                    @test isfile(joinpath(overlay_dir, "upper", "science"))
+                    @test isfile(joinpath(exe.persistence_dir, "upper", "read_only", "science"))
                 end
 
                 # JuliaLang/julia#47650: overlayfs' restrictive permissions cause problems
-                Sandbox.chmod_recursive(joinpath(overlay_dir, "work", "work"), 0o700,
+                Sandbox.chmod_recursive(joinpath(dir), 0o700,
                                         executor <: PrivilegedUserNamespacesExecutor)
             end
+        end
+
         end
 
         @testset "entrypoint" begin

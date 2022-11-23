@@ -100,7 +100,6 @@ struct map_list {
 };
 struct map_list *maps;
 struct map_list *workspaces;
-struct map_list *overlays;
 
 // This keeps track of our execution mode
 enum {
@@ -269,20 +268,23 @@ static void configure_user_namespace(pid_t pid, uid_t src_uid, gid_t src_gid,
  * discard any changes made to it when the overlayfs disappears.  This is how we protect our
  * rootfs and shards when mounting from a local filesystem, as well as how we convert a
  * read-only rootfs and shards to a read-write system when mounting from squashfs images.
- * The optional `bname` argument can be used to specify a subdirectory of `work_dir` to use.
  */
 static void mount_overlay(const char * src, const char * dest, const char * bname,
                           const char * work_dir, uid_t uid, gid_t gid) {
   char upper[PATH_MAX], work[PATH_MAX], opts[3*PATH_MAX+28];
 
-  // Construct the location of our upper and work directories
-  if (bname) {
-    snprintf(upper, sizeof(upper), "%s/upper/%s", work_dir, bname);
-    snprintf(work, sizeof(work), "%s/work/%s", work_dir, bname);
+  // If we're mounting in a directory, create the mountpoint as a directory,
+  // otherwise as a file.  Note that if `src` does not exist, we'll create a
+  // file here, then error out on the `mount()` call.
+  if (isdir(src)) {
+    mkpath(dest);
   } else {
-    snprintf(upper, sizeof(upper), "%s/upper", work_dir);
-    snprintf(work, sizeof(work), "%s/work", work_dir);
+    touch(dest);
   }
+
+  // Construct the location of our upper and work directories
+  snprintf(upper, sizeof(upper), "%s/upper/%s", work_dir, bname);
+  snprintf(work, sizeof(work), "%s/work/%s", work_dir, bname);
 
   // If `src` or `dest` is "", we actually want it to be "/", so adapt here because
   // this is the only place in the code base where we actually need the slash at the
@@ -460,7 +462,8 @@ static void mount_dev(const char * root_dir) {
   bind_mount(path, ptmx_dst, FALSE);
 }
 
-static void mount_maps(const char * dest, struct map_list * workspaces, uint8_t read_only) {
+static void mount_maps(const char * dest, struct map_list * workspaces, uint8_t read_only,
+                       const char * persist_dir, uid_t uid, gid_t gid) {
   char path[PATH_MAX];
 
   struct map_list *current_entry = workspaces;
@@ -473,28 +476,13 @@ static void mount_maps(const char * dest, struct map_list * workspaces, uint8_t 
     }
     snprintf(path, sizeof(path), "%s/%s", dest, inside);
 
-    // bind-mount the outside path to the inside path
-    bind_mount(current_entry->outside_path, path, read_only);
-
-    current_entry = current_entry->prev;
-  }
-}
-
-static void mount_overlays(const char * dest, struct map_list * overlays,
-                           uid_t uid, gid_t gid, const char * persist_dir) {
-  char path[PATH_MAX];
-
-  struct map_list *current_entry = overlays;
-  while (current_entry != NULL) {
-    char *inside = current_entry->map_path;
-
-    // take the path relative to root_dir
-    while (inside[0] == '/') {
-      inside = inside + 1;
+    if (read_only) {
+      // mount the outside path as an overlay to support modifications
+      mount_overlay(current_entry->outside_path, path, inside, persist_dir, uid, gid);
+    } else {
+      // bind-mount the outside path to the inside path
+      bind_mount(current_entry->outside_path, path, read_only);
     }
-    snprintf(path, sizeof(path), "%s/%s", dest, inside);
-
-    mount_overlay(path, path, NULL, current_entry->outside_path, uid, gid);
 
     current_entry = current_entry->prev;
   }
@@ -553,7 +541,7 @@ static void mount_the_world(const char * root_dir,
   mount_overlay(root_dir, root_dir, "rootfs", persist_dir, uid, gid);
 
   // Mount all of our read-only mounts.
-  mount_maps(root_dir, shard_maps, TRUE);
+  mount_maps(root_dir, shard_maps, TRUE, persist_dir, uid, gid);
 
   // Mount /proc within the sandbox.
   mount_procfs(root_dir, uid, gid);
@@ -562,10 +550,7 @@ static void mount_the_world(const char * root_dir,
   mount_dev(root_dir);
 
   // Mount all our read-write mounts (workspaces)
-  mount_maps(root_dir, workspaces, FALSE);
-
-  // Mount overlays.
-  mount_overlays(root_dir, overlays, uid, gid, persist_dir);
+  mount_maps(root_dir, workspaces, FALSE, persist_dir, uid, gid);
 }
 
 /*
@@ -742,7 +727,6 @@ int main(int sandbox_argc, char **sandbox_argv) {
       {"persist",    required_argument, NULL, 'p'},
       {"cd",         required_argument, NULL, 'c'},
       {"map",        required_argument, NULL, 'm'},
-      {"overlay",    required_argument, NULL, 'o'},
       {"uid",        required_argument, NULL, 'u'},
       {"gid",        required_argument, NULL, 'g'},
       {"tmpfs-size", required_argument, NULL, 't'},
@@ -790,7 +774,6 @@ int main(int sandbox_argc, char **sandbox_argv) {
           fprintf(stderr, "Parsed --cd as \"%s\"\n", new_cd);
         }
         break;
-      case 'o':
       case 'w':
       case 'm': {
         // Find the colon in "from:to"
@@ -814,15 +797,12 @@ int main(int sandbox_argc, char **sandbox_argv) {
         if (c == 'm') {
           entry->prev = maps;
           maps = entry;
-        } else if (c == 'w') {
+        } else {
           entry->prev = workspaces;
           workspaces = entry;
-        } else {
-          entry->prev = overlays;
-          overlays = entry;
         }
         if (verbose) {
-          fprintf(stderr, "Parsed --%s as \"%s\" -> \"%s\"\n", c == 'm' ? "map" : (c == 'w' ? "workspace" : "overlay"),
+          fprintf(stderr, "Parsed --%s as \"%s\" -> \"%s\"\n", c == 'm' ? "map" : "workspace",
                   entry->outside_path, entry->map_path);
         }
       } break;

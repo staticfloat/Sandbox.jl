@@ -160,11 +160,6 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
         append!(cmd_string, ["--workspace", "$(src):$(dst)"])
     end
 
-    # Add in overlay mappings
-    for (dst, src) in config.overlay_maps
-        append!(cmd_string, ["--overlay", "$(src):$(dst)"])
-    end
-
     # Add in entrypoint, if it is set
     if config.entrypoint !== nothing
         append!(cmd_string, ["--entrypoint", config.entrypoint])
