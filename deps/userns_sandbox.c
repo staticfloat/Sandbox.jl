@@ -273,14 +273,8 @@ static void mount_overlay(const char * src, const char * dest, const char * bnam
                           const char * work_dir, uid_t uid, gid_t gid) {
   char upper[PATH_MAX], work[PATH_MAX], opts[3*PATH_MAX+28];
 
-  // If we're mounting in a directory, create the mountpoint as a directory,
-  // otherwise as a file.  Note that if `src` does not exist, we'll create a
-  // file here, then error out on the `mount()` call.
-  if (isdir(src)) {
-    mkpath(dest);
-  } else {
-    touch(dest);
-  }
+  // overlay mounts are always directories, so make sure the destination exists
+  mkpath(dest);
 
   // Construct the location of our upper and work directories
   snprintf(upper, sizeof(upper), "%s/upper/%s", work_dir, bname);
@@ -477,8 +471,32 @@ static void mount_maps(const char * dest, struct map_list * workspaces, uint8_t 
     snprintf(path, sizeof(path), "%s/%s", dest, inside);
 
     if (read_only) {
-      // mount the outside path as an overlay to support modifications
-      mount_overlay(current_entry->outside_path, path, inside, persist_dir, uid, gid);
+      if (isdir(current_entry->outside_path)) {
+        // mount the outside path as an overlay to support modifications
+        mount_overlay(current_entry->outside_path, path, inside, persist_dir, uid, gid);
+      } else {
+        // overlayfs doesn't work for files, so mount the containing directory as an overlay
+        // and then bind mount the file into the correct position
+
+        char dirname_buf[PATH_MAX];
+        strncpy(dirname_buf, current_entry->outside_path, PATH_MAX);
+        char* outside_dir = dirname(&dirname_buf[0]);
+
+        // mount the parent directory in /proc; that will make sure it gets hidden
+        // when we end up mounting procfs there
+        char temp_dir[PATH_MAX];
+        snprintf(temp_dir, sizeof(path), "%s/proc/%s", dest, inside);
+        mount_overlay(outside_dir, temp_dir, inside, persist_dir, uid, gid);
+
+        char basename_buf[PATH_MAX];
+        strncpy(basename_buf, current_entry->outside_path, PATH_MAX);
+        char* file = basename(&basename_buf[0]);
+
+        char temp_path[PATH_MAX];
+        snprintf(temp_path, sizeof(path), "%s/%s", temp_dir, file);
+
+        bind_mount(temp_path, path, FALSE);
+      }
     } else {
       // bind-mount the outside path to the inside path
       bind_mount(current_entry->outside_path, path, read_only);
