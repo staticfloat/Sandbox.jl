@@ -124,11 +124,6 @@ for executor in all_executors
             @test String(take!(stdout)) == "pick this up foo\n";
         end
 
-        if executor <: UserNamespacesExecutor
-
-        # TODO: make the Docker executor default to overlaying read-only mounts,
-        #       so that these tests work everywhere (see the entrypoint testset below)
-
         @testset "read-only mounts support modifications" begin
             # with persist=false, these changes are ephemeral
             mktempdir() do dir
@@ -192,47 +187,33 @@ for executor in all_executors
             end
         end
 
-        end
-
         @testset "entrypoint" begin
             mktempdir() do dir
-                read_only_dir = joinpath(dir, "read_only")
-                mkdir(read_only_dir)
+                entrypoint_dir = joinpath(dir, "entrypoint")
                 stdout = IOBuffer()
                 stderr = IOBuffer()
                 config = SandboxConfig(
-                    Dict("/" => rootfs_dir, "/read_only" => read_only_dir),
-                    entrypoint = "/read_only/entrypoint",
+                    Dict("/" => rootfs_dir, "/entrypoint" => entrypoint_dir),
+                    entrypoint = "/entrypoint/script",
                     stdout = stdout,
                     stderr = stderr,
                 )
 
-                # Generate an `entrypoint` script that mounts a tmpfs-backed overlayfs over our read-only mounts
-                # Allowing us to write to those read-only mounts, but the changes are temporary
-                open(joinpath(read_only_dir, "entrypoint"), write=true) do io
+                # Generate an entrypoint script
+                mkdir(entrypoint_dir)
+                open(joinpath(entrypoint_dir, "script"), write=true) do io
                     write(io, """
                     #!/bin/sh
-
                     echo entrypoint activated
-
-                    mkdir /overlay_workdir
-                    mount -t tmpfs -osize=1G tmpfs /overlay_workdir
-                    mkdir -p /overlay_workdir/upper
-                    mkdir -p /overlay_workdir/work
-                    mount -t overlay overlay -olowerdir=/read_only -oupperdir=/overlay_workdir/upper -oworkdir=/overlay_workdir/work /read_only
-
                     exec "\$@"
                     """)
                 end
-                chmod(joinpath(read_only_dir, "entrypoint"), 0o755)
+                chmod(joinpath(entrypoint_dir, "script"), 0o755)
 
-                # Modifying the read-only files now works, and is temporary
+                # Test that both the entrypoint and the command are executed
                 with_executor(executor) do exe
-                    @test success(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
-                    @test String(take!(stdout)) == "entrypoint activated\naperture\n";
-                    @test print_if_nonempty(take!(stderr))
-                    @test success(exe, config, `/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`)
-                    @test String(take!(stdout)) == "entrypoint activated\naperture\n";
+                    @test success(exe, config, `/bin/sh -c "echo command executed"`)
+                    @test String(take!(stdout)) == "entrypoint activated\ncommand executed\n";
                     @test print_if_nonempty(take!(stderr))
                 end
             end

@@ -158,11 +158,38 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
     # Start in the right directory
     append!(cmd_string, ["-w", config.pwd])
 
-    # Add in read-only mappings (skipping the rootfs)
-    for (dst, src) in config.read_only_maps
-        if dst == "/"
-            continue
+    # If we have sufficient privileges, overlay read-only maps so that they can be modified.
+    # This emulates how the user-namespaces sandbox uses overlays for read-only mounts.
+    read_only_maps = filter(map->map.first != "/", config.read_only_maps)
+    if exe.privileges === :privileged && config.uid == 0 && check_overlayfs_loaded()
+        # Generate an entrypoint script
+        file, io = mktemp()
+        println(io, "#!/bin/sh")
+        for (dst, src) in read_only_maps
+            overlay = "/var/overlay/$dst"
+            println(io, """
+                mkdir -p $overlay/upper $overlay/work
+                mount -t overlay overlay -o lowerdir=$dst,upperdir=$overlay/upper,workdir=$overlay/work $dst""")
         end
+        if config.entrypoint !== nothing
+            # Continue executing the user-specified entrypoint
+            println(io, config.entrypoint)
+        else
+            # Execute the user command
+            println(io, "exec \"\$@\"")
+        end
+        chmod(file, 0o755)
+        close(io)
+
+        push!(read_only_maps, "/var/overlay/entrypoint.sh" => file)
+        append!(cmd_string, ["--entrypoint", "/var/overlay/entrypoint.sh"])
+    elseif config.entrypoint !== nothing
+        # Add in entrypoint, if it is set
+        append!(cmd_string, ["--entrypoint", config.entrypoint])
+    end
+
+    # Add in read-only mappings (skipping the rootfs)
+    for (dst, src) in read_only_maps
         append!(cmd_string, ["-v", "$(src):$(dst):ro"])
     end
 
@@ -179,11 +206,6 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
         for pair in user_cmd.env
             append!(cmd_string, ["-e", pair])
         end
-    end
-
-    # Add in entrypoint, if it is set
-    if config.entrypoint !== nothing
-        append!(cmd_string, ["--entrypoint", config.entrypoint])
     end
 
     if config.hostname !== nothing
