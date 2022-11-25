@@ -1,12 +1,21 @@
 using Random, Tar
 import Tar_jll
 
-Base.@kwdef struct DockerExecutor <: SandboxExecutor
+Base.@kwdef mutable struct DockerExecutor <: SandboxExecutor
     label::String = Random.randstring(10)
     privileges::Symbol = :privileged
+    persistence_dir::Union{String,Nothing} = nothing
 end
 
 function cleanup(exe::DockerExecutor)
+    if exe.persistence_dir !== nothing && isdir(exe.persistence_dir)
+        # Because a lot of these files are unreadable, we must `chmod +r` them before deleting
+        chmod_recursive(exe.persistence_dir, 0o777, isa(exe, PrivilegedUserNamespacesExecutor))
+        try
+            rm(exe.persistence_dir; force=true, recursive=true)
+        catch
+        end
+    end
     success(`docker system prune --force --filter=label=$(docker_image_label(exe))`)
 end
 
@@ -158,31 +167,45 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
     # Start in the right directory
     append!(cmd_string, ["-w", config.pwd])
 
+    # If we have a `--persist` argument, check to see if we already have a persistence_dir
+    # setup, if we do not, create a temporary directory and set it into our executor
+    read_write_maps = copy(config.read_write_maps)
+    if config.persist
+        if exe.persistence_dir === nothing
+            persist_parent_dir = get(ENV, "SANDBOX_PERSISTENCE_DIR", tempdir())
+            mkpath(persist_parent_dir)
+            exe.persistence_dir = mktempdir(persist_parent_dir)
+        end
+        push!(read_write_maps, "/var/persist" => exe.persistence_dir)
+    end
+
     # If we have sufficient privileges, overlay read-only maps so that they can be modified.
     # This emulates how the user-namespaces sandbox uses overlays for read-only mounts.
+    # Note that modifications to the rootfs are handled separately, because Docker doesn't
+    # like an overlayfs mount of the whole rootfs (for unknown reasons changes don't stick).
     read_only_maps = filter(map->map.first != "/", config.read_only_maps)
     if exe.privileges === :privileged && config.uid == 0 && check_overlayfs_loaded()
         # Generate an entrypoint script
         file, io = mktemp()
         println(io, "#!/bin/sh")
+        ## Overlay read-only maps
         for (dst, src) in read_only_maps
-            overlay = "/var/overlay/$dst"
+            overlay = "/var/persist/$dst"
             println(io, """
                 mkdir -p $overlay/upper $overlay/work
                 mount -t overlay overlay -o lowerdir=$dst,upperdir=$overlay/upper,workdir=$overlay/work $dst""")
         end
+        ## Execute user-specified scripts
         if config.entrypoint !== nothing
-            # Continue executing the user-specified entrypoint
             println(io, config.entrypoint)
         else
-            # Execute the user command
             println(io, "exec \"\$@\"")
         end
         chmod(file, 0o755)
         close(io)
 
-        push!(read_only_maps, "/var/overlay/entrypoint.sh" => file)
-        append!(cmd_string, ["--entrypoint", "/var/overlay/entrypoint.sh"])
+        push!(read_only_maps, "/entrypoint.sh" => file)
+        append!(cmd_string, ["--entrypoint", "/entrypoint.sh"])
     elseif config.entrypoint !== nothing
         # Add in entrypoint, if it is set
         append!(cmd_string, ["--entrypoint", config.entrypoint])
@@ -194,7 +217,7 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
     end
 
     # Add in read-write mappings
-    for (dst, src) in config.read_write_maps
+    for (dst, src) in read_write_maps
         append!(cmd_string, ["-v", "$(src):$(dst)"])
     end
 
