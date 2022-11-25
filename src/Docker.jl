@@ -188,12 +188,20 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
         # Generate an entrypoint script
         file, io = mktemp()
         println(io, "#!/bin/sh")
+        ## Make sure we have a persistence directory
+        if !config.persist
+            # depending on the Docker daemon configuration, we may not be able to mount an
+            # overlayfs on top of the container's filesystem
+            tmpfs_size = something(config.tmpfs_size, "1G")
+            println(io, """
+                mkdir /var/persist
+                mount -t tmpfs -osize=$(tmpfs_size) tmpfs /var/persist""")
+        end
         ## Overlay read-only maps
         for (dst, src) in read_only_maps
-            overlay = "/var/persist/$dst"
             println(io, """
-                mkdir -p $overlay/upper $overlay/work
-                mount -t overlay overlay -o lowerdir=$dst,upperdir=$overlay/upper,workdir=$overlay/work $dst""")
+                mkdir -p /var/persist/upper/$dst /var/persist/work/$dst
+                mount -t overlay overlay -o lowerdir=$dst,upperdir=/var/persist/upper/$dst,workdir=/var/persist/work/$dst $dst""")
         end
         ## Execute user-specified scripts
         if config.entrypoint !== nothing
