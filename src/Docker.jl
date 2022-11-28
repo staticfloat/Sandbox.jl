@@ -194,18 +194,18 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
             # overlayfs on top of the container's filesystem
             tmpfs_size = something(config.tmpfs_size, "1G")
             println(io, """
-                mkdir /var/persist
-                mount -t tmpfs -osize=$(tmpfs_size) tmpfs /var/persist""")
+                /bin/mkdir /var/persist
+                /bin/mount -t tmpfs -osize=$(tmpfs_size) tmpfs /var/persist""")
         end
         ## Overlay read-only maps
         for (dst, src) in read_only_maps
             println(io, """
-                mkdir -p /var/persist/upper/$dst /var/persist/work/$dst
-                mount -t overlay overlay -o lowerdir=$dst,upperdir=/var/persist/upper/$dst,workdir=/var/persist/work/$dst $dst""")
+                /bin/mkdir -p /var/persist/upper/$dst /var/persist/work/$dst
+                /bin/mount -t overlay overlay -o lowerdir=$dst,upperdir=/var/persist/upper/$dst,workdir=/var/persist/work/$dst $dst""")
         end
         ## Execute user-specified scripts
         if config.entrypoint !== nothing
-            println(io, config.entrypoint)
+            println(io, "exec $(config.entrypoint) \"\$@\"")
         else
             println(io, "exec \"\$@\"")
         end
