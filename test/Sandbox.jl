@@ -17,6 +17,8 @@ function print_if_nonempty(stderr::Vector{UInt8})
     return true
 end
 
+@testset "Sandboxing" begin
+
 rootfs_dir = Sandbox.debian_rootfs()
 for executor in all_executors
     if !executor_available(executor)
@@ -24,7 +26,7 @@ for executor in all_executors
         continue
     end
 
-    @testset "$(executor) Sandboxing" begin
+    @testset "$(executor)" begin
         @testset "capturing stdout/stderr" begin
             stdout = IOBuffer()
             stderr = IOBuffer()
@@ -351,4 +353,7 @@ end
         @test String(take!(stdout)) == "stdout\n";
         @test String(take!(stderr)) == "stderr\n";
     end
+end
+
+
 end
