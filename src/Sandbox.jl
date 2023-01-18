@@ -274,4 +274,11 @@ end
 # The multiarch rootfs is truly multiarch
 multiarch_rootfs(;platform=nothing) = artifact"multiarch-rootfs"
 
+# Precompilation section
+let
+    f(exe) = run(exe, SandboxConfig(Dict("/" => "/")), `/bin/bash -c exit`)
+    precompile(select_executor, (Bool,))
+    precompile(with_executor, (typeof(f),))
+end
+
 end # module
