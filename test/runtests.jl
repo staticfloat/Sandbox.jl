@@ -15,6 +15,12 @@ else
     end
 end
 
+# Remove `SANDBOX_FORCE_MODE`, as we want to test all modes
+if haskey(ENV, "FORCE_SANDBOX_MODE")
+    @warn("Un-setting `FORCE_SANDBOX_MODE` for tests...")
+    delete!(ENV, "FORCE_SANDBOX_MODE")
+end
+
 using Test, Sandbox, Scratch
 
 # If we're on a UserNSSandbox_jll-compatible system, ensure that the sandbox is coming from where we expect.
