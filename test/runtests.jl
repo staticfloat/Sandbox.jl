@@ -36,6 +36,11 @@ if UserNSSandbox_jll.is_available()
     end
 end
 
+# Ensure we're not running as root; that breaks unprivileged user namespaces testing
+if Sandbox.getuid() == 0
+    error("Cannot run Sandbox.jl tests as root!")
+end
+
 include("SandboxConfig.jl")
 include("UserNamespaces.jl")
 include("Docker.jl")
