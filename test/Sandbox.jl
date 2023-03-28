@@ -35,8 +35,8 @@ for executor in all_executors
             )
             with_executor(executor) do exe
                 @test success(exe, config, `/bin/sh -c "echo stdout; echo stderr >&2"`)
-                @test String(take!(stdout)) == "stdout\n";
-                @test String(take!(stderr)) == "stderr\n";
+                @test String(take!(stdout)) == "stdout\n"
+                @test String(take!(stderr)) == "stderr\n"
             end
         end
 
