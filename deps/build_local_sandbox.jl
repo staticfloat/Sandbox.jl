@@ -14,6 +14,6 @@ set_preferences!(
 )
 set_preferences!(
     jll_uuid,
-    "userns_overlay_probe_path" => joinpath(sdir, "userns_overlay_probe");
+    "overlay_probe_path" => joinpath(sdir, "userns_overlay_probe");
     force=true,
 )
