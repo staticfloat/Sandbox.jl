@@ -33,6 +33,35 @@ function get_mounts(;verbose::Bool = false)
 end
 
 """
+    realpath_stem(path::AbstractString)
+
+Given a path, return the `realpath` of it.  If it does not exist, try to
+resolve the `realpath` of its containing directory, then append the tail
+portion onto the end of that resolved stem.  This iterates until we find a stem
+that can be resolved.
+
+This allows for resolving directory symlinks halfway through a path, while not
+requiring that the final path leaf exist at the time of calling
+`realpath_stem()`.  Of course, if the final path leaf is itself a symlink, this
+will not work correctly, so this should be considered a "best effort" function.
+
+Internally, we use this to attempt to discover the actual mountpoint a mapping
+is or will be stored on.
+"""
+function realpath_stem(path::AbstractString)
+    if ispath(path)
+        return realpath(path)
+    end
+
+    dir, leaf = splitdir(path)
+    if dir == path
+        # This shouldn't really be possible
+        throw(ArgumentError("Unable to find any real component of path!"))
+    end
+    return joinpath(realpath_stem(dir), leaf)
+end
+
+"""
     is_ecryptfs(path::AbstractString; verbose::Bool=false)
 
 Checks to see if the given `path` (or any parent directory) is placed upon an
