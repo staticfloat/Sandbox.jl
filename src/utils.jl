@@ -240,9 +240,8 @@ end
 
 function find_persist_dir_root(rootfs_path::String, dir_hints::Vector{String} = default_persist_root_dirs(); verbose::Bool = false)
     function probe_overlay_mount(rootfs_path, mount_path; verbose::Bool = false, userxattr::Bool = false)
-        probe_exe = joinpath(dirname(UserNSSandbox_jll.sandbox_path), "userns_overlay_probe")
-
-        probe_args = String[]
+        probe_exe = UserNSSandbox_jll.overlay_probe_path
+	probe_args = String[]
         if verbose
             push!(probe_args, "--verbose")
         end
