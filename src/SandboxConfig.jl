@@ -89,12 +89,13 @@ struct SandboxConfig
             end
         end
 
-        # Force every path to be `realpath()`'ed
+        # Force every path to be `realpath()`'ed (up to the point of existence)
+        # This allows us to maintain
         for (dst, src) in read_only_maps
-            read_only_maps[dst] = realpath(src)
+            read_only_maps[dst] = realpath_stem(src)
         end
         for (dst, src) in read_write_maps
-            read_write_maps[dst] = realpath(src)
+            read_write_maps[dst] = realpath_stem(src)
         end
 
         for path in [values(read_only_maps)...; values(read_write_maps)...]

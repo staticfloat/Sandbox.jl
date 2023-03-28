@@ -62,4 +62,38 @@ using Test, LazyArtifacts, Sandbox
         @test_throws ArgumentError SandboxConfig(Dict("/" => rootfs_dir); pwd="lib")
         @test_throws ArgumentError SandboxConfig(Dict("/" => rootfs_dir); entrypoint="init")
     end
+
+    using Sandbox: realpath_stem
+    @testset "realpath_stem" begin
+        mktempdir() do dir
+            mkdir(joinpath(dir, "bar"))
+            touch(joinpath(dir, "bar", "foo"))
+            symlink("foo", joinpath(dir, "bar", "l_foo"))
+            symlink("bar", joinpath(dir, "l_bar"))
+            symlink(joinpath(dir, "l_bar", "foo"), joinpath(dir, "l_bar_foo"))
+
+            # Test that `realpath_stem` works just like `realpath()` on existent paths:
+            existent_paths = [
+                joinpath(dir, "bar"),
+                joinpath(dir, "bar", "foo"),
+                joinpath(dir, "bar", "l_foo"),
+                joinpath(dir, "l_bar"),
+                joinpath(dir, "l_bar", "foo"),
+                joinpath(dir, "l_bar", "l_foo"),
+                joinpath(dir, "l_bar_foo"),
+            ]
+            for path in existent_paths
+                @test realpath_stem(path) == realpath(path)
+            end
+
+            # Test that `realpath_stem` gives good answers for non-existent paths:
+            non_existent_path_mappings = [
+                joinpath(dir, "l_bar", "spoon") => joinpath(dir, "bar", "spoon"),
+                joinpath(dir, "l_bar", "..", "l_bar", "spoon") => joinpath(dir, "bar", "spoon"),
+            ]
+            for (non_path, path) in non_existent_path_mappings
+                @test realpath_stem(non_path) == path
+            end
+        end
+    end
 end
