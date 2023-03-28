@@ -101,9 +101,11 @@ for executor in all_executors
                     Dict("/" => rootfs_dir),
                     Dict("/glados" => dir);
                 )
-                @test success(executor(), config, `/bin/sh -c "echo aperture > /glados/science.txt"`)
-                @test isfile(joinpath(dir, "science.txt"))
-                @test String(read(joinpath(dir, "science.txt"))) == "aperture\n"
+                with_executor(executor) do exe
+                    @test success(exe, config, `/bin/sh -c "echo aperture > /glados/science.txt"`)
+                    @test isfile(joinpath(dir, "science.txt"))
+                    @test String(read(joinpath(dir, "science.txt"))) == "aperture\n"
+                end
             end
         end
 
@@ -119,9 +121,11 @@ for executor in all_executors
                 stdin = pipe,
                 stdout = stdout,
             )
-            @test success(executor(), first_config, `/bin/sh -c "echo 'ignore me'; echo 'pick this up foo'; echo 'ignore me as well'"`)
-            @test success(executor(), second_config, `/bin/sh -c "grep foo"`)
-            @test String(take!(stdout)) == "pick this up foo\n";
+            with_executor(executor) do exe
+                @test success(exe, first_config, `/bin/sh -c "echo 'ignore me'; echo 'pick this up foo'; echo 'ignore me as well'"`)
+                @test success(exe, second_config, `/bin/sh -c "grep foo"`)
+                @test String(take!(stdout)) == "pick this up foo\n";
+            end
         end
 
         @testset "read-only mounts are really read-only" begin
