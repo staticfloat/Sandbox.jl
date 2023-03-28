@@ -4,9 +4,15 @@ steps:
       # Install Julia
       - JuliaCI/julia#v1:
           version: "${JULIA_VERSION}"
-      # Install `gcc` so that we can build the local sandbox, and `sudo` so that we can test the privileged runner
-      - improbable-eng/metahook:
-          pre-command: apt update && apt install -y gcc sudo || true
+      # Run inside of a rootfs that allows us to build the local sandbox, also that maps to a non-zero UID
+      - staticfloat/sandbox#v1:
+          rootfs_url: "${ROOTFS_URL?}"
+          rootfs_treehash: "${ROOTFS_HASH?}"
+          uid: 1000
+          gid: 1000
+          workspaces:
+            - "/cache:/cache"
+
       # Run standard tests, possibly building a local sandbox
       - JuliaCI/julia-test#v1: ~
 
