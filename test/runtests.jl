@@ -38,7 +38,7 @@ end
 
 # Ensure we're not running as root; that breaks unprivileged user namespaces testing
 if Sandbox.getuid() == 0
-    error("Cannot run Sandbox.jl tests as root!")
+    @warn("You are running Sandbox.jl tests as root!  This cannot test unprivileged namespaces!")
 end
 
 include("SandboxConfig.jl")

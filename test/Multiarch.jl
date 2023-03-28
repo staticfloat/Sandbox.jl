@@ -40,7 +40,7 @@ using Test, Sandbox, Base.BinaryPlatforms, LazyArtifacts
         multiarch_executors = Sandbox.SandboxExecutor[]
     elseif Sys.islinux()
         # On Linux, we need passwordless sudo to be able to register things
-        if !success(`sudo -k -n true`)
+        if Sys.which("sudo") !== nothing && !success(`sudo -k -n true`)
             @warn("Refusing to test multiarch on a system without passwordless sudo!")
             multiarch_executors = Sandbox.SandboxExecutor[]
         end

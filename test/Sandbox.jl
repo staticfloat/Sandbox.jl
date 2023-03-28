@@ -3,8 +3,11 @@ using Test, Sandbox, SHA, Base.BinaryPlatforms
 all_executors = Sandbox.all_executors
 
 # Can we run `sudo` without a password?  If not, don't attempt to test the privileged runner
-if !success(`sudo -k -n true`)
+if Sys.which("sudo") !== nothing && !success(`sudo -k -n true`)
     all_executors = filter(exe -> exe != PrivilegedUserNamespacesExecutor, all_executors)
+end
+if Sandbox.getuid() == 0
+    all_executors = filter(exe -> exe != UnprivilegedUserNamespacesExecutor, all_executors)
 end
 
 function print_if_nonempty(stderr::Vector{UInt8})

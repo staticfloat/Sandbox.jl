@@ -100,7 +100,7 @@ else
 end
 
 # Only test privileged runner if sudo doesn't require a password
-if success(`sudo -k -n true`)
+if Sys.which("sudo") !== nothing && success(`sudo -k -n true`)
     if executor_available(PrivilegedUserNamespacesExecutor)
         @testset "PrivilegedUserNamespacesExecutor" begin
             @test_logs (:info, "Testing Privileged User Namespaces Executor (read-only, read-write)") match_mode=:any begin

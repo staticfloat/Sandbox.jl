@@ -234,10 +234,10 @@ function sudo_cmd()
     if getuid() == 0
         # If we're already root, don't use any kind of sudo program
         _sudo_cmd = String[]
-    elseif Sys.which("sudo") !== nothing success(`sudo -V`)
+    elseif Sys.which("sudo") !== nothing && success(`sudo -V`)
         # If `sudo` is available, use that
         _sudo_cmd = ["sudo"]
-    elseif Sys.which("su") !== nothing
+    elseif Sys.which("su") !== nothing && success(`su --version`)
         # Fall back to `su` if all else fails
         _sudo_cmd = ["su", "root", "-c"]
     else
