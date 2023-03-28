@@ -53,7 +53,7 @@ int main(int sandbox_argc, char **sandbox_argv) {
         return 0;
       case 'v':
         verbose = 1;
-        fprintf(stderr, "verbose userns_overlay_probe enabled\n");
+        fprintf(stderr, "verbose overlay_probe enabled\n");
         break;
       case 't':
         mount_tmpfs = 1;
@@ -148,9 +148,31 @@ int main(int sandbox_argc, char **sandbox_argv) {
 
     // Mount an overlay filesystem with the probe directory as the "work" directory.
     uint8_t ret = mount_overlay(rootfs_dir, rootfs_dir, "probe", probe_dir, userxattr);
+
+    if (ret == TRUE) {
+      // Test directory renaming (this ensures that our kernel can handle this combination
+      // of `userxattr`, `redirect_dir`, etc...).  This is basically the test that ensures
+      // `apt` can install stuff without hitting `EXDEV` errors.
+      char move_dir_src[PATH_MAX+5], move_dir_dst[PATH_MAX+5];
+      snprintf(move_dir_src, sizeof(move_dir_src), "%s/src", rootfs_dir);
+      snprintf(move_dir_dst, sizeof(move_dir_dst), "%s/dst", rootfs_dir);
+      mkpath(move_dir_src);
+      if (0 != rename(move_dir_src, move_dir_dst)) {
+        if (verbose) {
+          fprintf(stderr, "----> rename(\"%s\", \"%s\") failed: %d (%s)\n", move_dir_src, move_dir_dst, errno, strerror(errno));
+        }
+        ret = FALSE;
+      }
+      if (verbose) {
+        fprintf(stderr, "----> rename(\"%s\", \"%s\") passed: %d (%s)\n", move_dir_src, move_dir_dst, errno, strerror(errno));
+      }
+    }
+
+    check(0 == umount(rootfs_dir));
     if (mount_tmpfs) {
       check(0 == umount(probe_dir));
     }
+
     rmrf(probe_dir);
 
     if (ret == TRUE && verbose) {
