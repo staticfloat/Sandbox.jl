@@ -1,9 +1,10 @@
 name = "Sandbox"
 uuid = "9307e30f-c43e-9ca7-d17c-c2dc59df670d"
 authors = ["Elliot Saba <staticfloat@gmail.com>"]
-version = "1.6.1"
+version = "2.0.0"
 
 [deps]
+EnumX = "4e289a0a-7415-4d19-859d-a7e5c4648b56"
 LazyArtifacts = "4af54fe1-eca0-43a8-85a7-787d91b784e3"
 Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
 Preferences = "21216c6a-2e73-6563-6e65-726566657250"

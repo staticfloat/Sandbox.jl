@@ -148,64 +148,31 @@ function with_executor(f::F, ::Type{T} = preferred_executor();
     end
 end
 
-function probe_executor(executor::SandboxExecutor; verbose::Bool = false, test_read_only_map=false, test_read_write_map=false)
+function probe_executor(executor::SandboxExecutor; verbose::Bool = false)
     mktempdir() do tmpdir
-        read_only_maps = Dict{String,String}(
-            "/" => debian_rootfs(),
+        rw_dir = joinpath(tmpdir, "rw")
+        mkpath(rw_dir)
+        mounts = Dict(
+            "/" => MountInfo(debian_rootfs(), MountType.Overlayed),
+            "/read_write" => MountInfo(rw_dir, MountType.ReadWrite),
         )
-        read_write_maps = Dict{String,String}()
 
-        # The simplest test is to see if stdout capturing works
-        inner_cmd = "echo 'hello julia'"
-
-        # Test whether we can use read-only mappings
-        if test_read_only_map
-            map_dir = joinpath(tmpdir, "read_only_map")
-            mkdir(map_dir)
-            open(joinpath(map_dir, "foo"), write=true) do io
-                write(io, "read-only mapping successful")
-            end
-
-            # Mount that directory in /read_only
-            read_only_maps["/read_only"] = map_dir
-
-            # Read from the foo file
-            inner_cmd = "$(inner_cmd) && cat /read_only/foo"
-        end
-
-        # Test whether we can use read-write mappings
-        if test_read_write_map
-            workspace_dir = joinpath(tmpdir, "read_write_map")
-            mkdir(workspace_dir)
-
-            # Mount that directory in /read_write
-            read_write_maps["/read_write"] = workspace_dir
-
-            # Write to the foo file
-            inner_cmd = "$(inner_cmd) && echo read-write mapping successful >> /read_write/foo"
-        end
+        # Do a quick test that this executor works
+        inner_cmd = """
+        echo 'hello julia'
+        echo 'read-write mapping successful' >> /read_write/foo
+        """
 
         cmd_stdout = IOBuffer()
         cmd_stderr = IOBuffer()
         config = SandboxConfig(
-            read_only_maps,
-            read_write_maps,
+            mounts,
             Dict("PATH" => "/bin:/usr/bin");
             stdout=cmd_stdout,
             stderr=cmd_stderr,
+            verbose,
         )
         user_cmd = `/bin/bash -c "$(inner_cmd)"`
-
-        if verbose
-            tests = String[]
-            if test_read_only_map
-                push!(tests, "read-only")
-            end
-            if test_read_write_map
-                push!(tests, "read-write")
-            end
-            @info("Testing $(executor) ($(join(tests, ", ")))")
-        end
 
         # Command should execute successfully
         user_cmd = ignorestatus(user_cmd)
@@ -213,21 +180,13 @@ function probe_executor(executor::SandboxExecutor; verbose::Bool = false, test_r
             if verbose
                 cmd_stdout = String(take!(cmd_stdout))
                 cmd_stderr = String(take!(cmd_stderr))
-                @warn("Unable to run `sandbox` itself", cmd_stdout, cmd_stderr)
+                @warn("Unable to run `sandbox` itself", cmd_stdout)
+                println(cmd_stderr)
             end
             return false
         end
 
-        # No stderr output (unless we're running in verbose mode)
-        if verbose
-            stderr_output = String(take!(cmd_stderr))
-            if !isempty(stderr_output)
-                @warn(" -> Non-empty stderr output", stderr_output)
-                return false
-            end
-        end
-
-        # stdout shuold contain "hello julia" as its own line
+        # stdout should contain "hello julia" as its own line
         cmd_stdout = String(take!(cmd_stdout))
         stdout_lines = split(cmd_stdout, "\n")
         if !("hello julia" in stdout_lines)
@@ -237,31 +196,20 @@ function probe_executor(executor::SandboxExecutor; verbose::Bool = false, test_r
             return false
         end
 
-        if test_read_only_map
-            if !("read-only mapping successful" in stdout_lines)
-                if verbose
-                    @warn(" -> Read-only mapping sentinel missing!")
-                end
-                return false
+        foo_file = joinpath(joinpath(tmpdir, "rw", "foo"))
+        if !isfile(foo_file)
+            if verbose
+                @warn(" -> Read-write mapping sentinel file missing!")
             end
+            return false
         end
 
-        if test_read_write_map
-            foo_file = joinpath(joinpath(tmpdir, "read_write_map", "foo"))
-            if !isfile(foo_file)
-                if verbose
-                    @warn(" -> Read-write mapping sentinel file missing!")
-                end
-                return false
+        foo_file_contents = String(read(foo_file))
+        if foo_file_contents != "read-write mapping successful\n"
+            if verbose
+                @warn(" -> Read-write mapping data corrupted", foo_file_contents)
             end
-
-            foo_file_contents = String(read(foo_file))
-            if foo_file_contents != "read-write mapping successful\n"
-                if verbose
-                    @warn(" -> Read-write mapping data corrupted", foo_file_contents)
-                end
-                return false
-            end
+            return false
         end
         return true
     end

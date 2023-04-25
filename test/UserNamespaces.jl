@@ -7,17 +7,16 @@ end
 
 if executor_available(UnprivilegedUserNamespacesExecutor)
     @testset "UnprivilegedUserNamespacesExecutor" begin
-        @test_logs (:info, "Testing Unprivileged User Namespaces Executor (read-only, read-write)") begin
-            with_executor(UnprivilegedUserNamespacesExecutor) do exe
-                @test probe_executor(exe; test_read_only_map=true, test_read_write_map=true, verbose=true)
-            end
+        with_executor(UnprivilegedUserNamespacesExecutor) do exe
+            @test probe_executor(exe)
         end
     end
     # Can run these tests only if we can actually mount tmpfs with unprivileged executor.
     @testset "Customize the tempfs size" begin
         rootfs_dir = Sandbox.debian_rootfs()
-        read_only_maps = Dict("/" => rootfs_dir)
-        read_write_maps = Dict{String, String}()
+        mounts = Dict(
+            "/" => MountInfo(rootfs_dir, MountType.Overlayed),
+        )
         env = Dict(
             "PATH" => "/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin",
             "HOME" => "/home/juliaci",
@@ -27,7 +26,7 @@ if executor_available(UnprivilegedUserNamespacesExecutor)
         @testset "tempfs is big enough" begin
             stdout = IOBuffer()
             stderr = IOBuffer()
-            config = SandboxConfig(read_only_maps, read_write_maps, env; tmpfs_size = "1G", stdout, stderr, persist=false)
+            config = SandboxConfig(mounts, env; tmpfs_size = "1G", stdout, stderr, persist=false)
             with_executor(UnprivilegedUserNamespacesExecutor) do exe
                 @test success(exe, config, cmd)
                 @test isempty(take!(stdout))
@@ -39,7 +38,7 @@ if executor_available(UnprivilegedUserNamespacesExecutor)
         @testset "tempfs is too small" begin
             stdout = IOBuffer()
             stderr = IOBuffer()
-            config = SandboxConfig(read_only_maps, read_write_maps, env; tmpfs_size = "10M", stdout, stderr, persist=false)
+            config = SandboxConfig(mounts, env; tmpfs_size = "10M", stdout, stderr, persist=false)
             with_executor(UnprivilegedUserNamespacesExecutor) do exe
                 @test !success(exe, config, cmd)
                 @test startswith(strip(String(take!(stderr))), strip("""
@@ -103,10 +102,8 @@ end
 if Sys.which("sudo") !== nothing && success(`sudo -k -n true`)
     if executor_available(PrivilegedUserNamespacesExecutor)
         @testset "PrivilegedUserNamespacesExecutor" begin
-            @test_logs (:info, "Testing Privileged User Namespaces Executor (read-only, read-write)") match_mode=:any begin
-                with_executor(PrivilegedUserNamespacesExecutor) do exe
-                    @test probe_executor(exe; test_read_only_map=true, test_read_write_map=true, verbose=true)
-                end
+            with_executor(PrivilegedUserNamespacesExecutor) do exe
+                @test probe_executor(exe)
             end
         end
     else
