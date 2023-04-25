@@ -51,10 +51,8 @@ if executor_available(DockerExecutor)
         end
 
         @testset "probe_executor" begin
-            @test_logs (:info, "Testing Docker Executor (read-only, read-write)") begin
-                with_executor(DockerExecutor) do exe
-                    @test probe_executor(exe; test_read_only_map=true, test_read_write_map=true, verbose=true)
-                end
+            with_executor(DockerExecutor) do exe
+                @test probe_executor(exe)
             end
         end
 

@@ -80,7 +80,7 @@ for executor in all_executors
             end
         end
 
-        @testset "reading from maps" begin
+        @testset "reading from mounts" begin
             mktempdir() do dir
                 open(joinpath(dir, "note.txt"), write=true) do io
                     write(io, "great success")
@@ -97,12 +97,14 @@ for executor in all_executors
             end
         end
 
-        @testset "writing to workspaces" begin
+        @testset "writing to mounts" begin
             mktempdir() do dir
                 stdout = IOBuffer()
                 config = SandboxConfig(
-                    Dict("/" => rootfs_dir),
-                    Dict("/glados" => dir);
+                    Dict(
+                        "/" => MountInfo(rootfs_dir, MountType.Overlayed),
+                        "/glados" => MountInfo(dir, MountType.ReadWrite),
+                    );
                 )
                 with_executor(executor) do exe
                     @test success(exe, config, `/bin/sh -c "echo aperture > /glados/science.txt"`)
@@ -131,25 +133,32 @@ for executor in all_executors
             end
         end
 
-        @testset "read-only mounts are really read-only" begin
+        # While we don't strictly care about read-only mounts, we might in the future,
+        # so we ensure they're supported.  What we _truly_ care about is Overlayed,
+        # mounts, where the modifications are visible only inside the sandbox, and are
+        # saved within the persistence directory
+        @testset "ReadOnly, ReadWrite and Overlayed MountTypes" begin
             mktempdir() do dir
-                read_only_dir = joinpath(dir, "read_only")
-                read_write_dir = joinpath(dir, "read_write")
-                mkdir(read_only_dir)
-                mkdir(read_write_dir)
                 stdout = IOBuffer()
                 stderr = IOBuffer()
                 config = SandboxConfig(
-                    Dict("/" => rootfs_dir, "/read_only" => read_only_dir),
-                    Dict("/read_write" => read_write_dir),
-                    stdout = stdout,
-                    stderr = stderr,
-                    persist = false,
+                    Dict(
+                        "/" => MountInfo(rootfs_dir, MountType.Overlayed),
+                        "/read_only" => MountInfo(dir, MountType.ReadOnly),
+                        "/read_write" => MountInfo(dir, MountType.ReadWrite),
+                        "/overlayed" => MountInfo(dir, MountType.Overlayed),
+                    );
+                    stdout,
+                    stderr,
+                    persist=false,
                 )
                 # Modifying the rootfs works, and is temporary; for docker containers this is modifying
                 # the rootfs image, for userns this is all mounted within an overlay backed by a tmpfs,
-                # because we have `persist` set to `false`.
+                # because we have `persist` set to `false`.  Modifying `/read_only` does not work,
+                # Modifying `/read_write` works and is visible to the host, modifying `/overlayed` works
+                # but is not visible to the host.
                 with_executor(executor) do exe
+                    # Because `persist=false`, this is non-persistent.
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`)
                     @test String(take!(stdout)) == "aperture\n";
                     @test print_if_nonempty(take!(stderr))
@@ -160,13 +169,27 @@ for executor in all_executors
                     # An actual read-only mount will not allow writing, because it's truly read-only
                     @test !success(exe, config, ignorestatus(`/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`))
                     @test occursin("Read-only file system", String(take!(stderr)))
+                    @test !isfile(joinpath(dir, "science"))
 
-                    # A read-write mount, on the other hand, will be permanent
+                    # A read-write mount, on the other hand, will be permanent, and visible to the host
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`)
                     @test String(take!(stdout)) == "aperture\n";
                     @test print_if_nonempty(take!(stderr))
+                    @test isfile(joinpath(dir, "science"))
+
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`)
                     @test String(take!(stdout)) == "aperture\naperture\n";
+                    @test print_if_nonempty(take!(stderr))
+                    @test isfile(joinpath(dir, "science"))
+                    rm(joinpath(dir, "science"))
+
+                    # An overlay mount allows writing and reading, but does not modify the host environment.
+                    # Because this is a non-persistent executor, changes are lost from invocation to invocation.
+                    @test success(exe, config, `/bin/sh -c "echo aperture >> /overlayed/science && cat /overlayed/science"`)
+                    @test String(take!(stdout)) == "aperture\n";
+                    @test print_if_nonempty(take!(stderr))
+                    @test success(exe, config, `/bin/sh -c "echo aperture >> /overlayed/science && cat /overlayed/science"`)
+                    @test String(take!(stdout)) == "aperture\n";
                     @test print_if_nonempty(take!(stderr))
                 end
             end
@@ -222,27 +245,34 @@ for executor in all_executors
                 stdout = IOBuffer()
                 stderr = IOBuffer()
                 config = SandboxConfig(
-                    Dict("/" => rootfs_dir),
+                    Dict(
+                        "/" => MountInfo(rootfs_dir, MountType.Overlayed),
+                        "/overlayed" => MountInfo(dir, MountType.Overlayed),
+                    ),
                     stdout = stdout,
                     stderr = stderr,
                     persist = true,
                 )
 
-                # Modifying the read-only files is persistent within a single executor
-                cmd = `/bin/sh -c "echo aperture >> /bin/science && cat /bin/science"`
-                with_executor(executor) do exe
-                    @test success(exe, config, cmd)
-                    @test String(take!(stdout)) == "aperture\n";
-                    @test print_if_nonempty(take!(stderr))
-                    @test success(exe, config, cmd)
-                    @test String(take!(stdout)) == "aperture\naperture\n";
-                    @test print_if_nonempty(take!(stderr))
-                end
+                # Modifying the rootfs or the overlay mount is persistent within a single executor
+                for prefix in ("/bin", "/overlayed")
+                    cmd = `/bin/sh -c "echo aperture >> $prefix/science && cat $prefix/science"`
+                    with_executor(executor) do exe
+                        @test success(exe, config, cmd)
+                        @test String(take!(stdout)) == "aperture\n";
+                        @test print_if_nonempty(take!(stderr))
+                        @test success(exe, config, cmd)
+                        @test String(take!(stdout)) == "aperture\naperture\n";
+                        @test print_if_nonempty(take!(stderr))
+                        @test !isfile(joinpath(dir, "science"))
+                    end
 
-                with_executor(executor) do exe
-                    @test success(exe, config, cmd)
-                    @test String(take!(stdout)) == "aperture\n";
-                    @test print_if_nonempty(take!(stderr))
+                    with_executor(executor) do exe
+                        @test success(exe, config, cmd)
+                        @test String(take!(stdout)) == "aperture\n";
+                        @test print_if_nonempty(take!(stderr))
+                        @test !isfile(joinpath(dir, "science"))
+                    end
                 end
             end
         end

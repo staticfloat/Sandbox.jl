@@ -32,7 +32,7 @@ To test this executable, compile it with:
 Then run it, mounting in a rootfs with a workspace and no other read-only maps:
 
     mkdir -p /tmp/workspace
-    /tmp/sandbox --verbose --rootfs $rootfs_dir --workspace /tmp/workspace:/workspace --cd /workspace /bin/bash
+    /tmp/sandbox --verbose --rootfs $rootfs_dir --mount /tmp/workspace:/workspace --cd /workspace /bin/bash
 */
 
 #include "userns_common.h"
@@ -47,14 +47,20 @@ char *new_cd = NULL;
 // Specifying this will allow subsequent invocations to persist temporary state.
 char * persist_dir = NULL;
 
-// Linked list of volume mappings
-struct map_list {
-    char *map_path;
-    char *outside_path;
-    struct map_list *prev;
+enum {
+  MOUNT_TYPE_READWRITE,
+  MOUNT_TYPE_READONLY,
+  MOUNT_TYPE_OVERLAYED,
 };
-struct map_list *maps;
-struct map_list *workspaces;
+
+// Linked list of volume mappings
+struct mount_list {
+    char *mount_point;
+    char *outside_path;
+    int type;
+    struct mount_list *prev;
+};
+struct mount_list *mounts;
 
 // This keeps track of our execution mode
 enum {
@@ -100,36 +106,14 @@ static void mount_dev(const char * root_dir) {
   bind_mount(path, ptmx_dst, FALSE);
 }
 
-static void mount_maps(const char * dest, struct map_list * workspaces, uint8_t read_only) {
-  char path[PATH_MAX];
-
-  struct map_list *current_entry = workspaces;
-  while( current_entry != NULL ) {
-    char *inside = current_entry->map_path;
-
-    // take the path relative to root_dir
-    while (inside[0] == '/') {
-      inside = inside + 1;
-    }
-    snprintf(path, sizeof(path), "%s/%s", dest, inside);
-
-    // bind-mount the outside path to the inside path
-    bind_mount(current_entry->outside_path, path, read_only);
-    current_entry = current_entry->prev;
-  }
-}
-
 /*
  * Helper function that mounts pretty much everything:
- *   - procfs
- *   - our overlay work directory
+ *   - procfs/devtmpfs/etc...
  *   - the rootfs
- *   - the shards
- *   - the workspace (if given by the user)
+ *   - any other mounts, read-write, read-only, overlayed, etc...
  */
 static void mount_the_world(const char * root_dir,
-                            struct map_list * shard_maps,
-                            struct map_list * workspaces,
+                            struct mount_list * maps,
                             uid_t uid, gid_t gid,
                             const char * persist_dir,
                             const char * tmpfs_size) {
@@ -144,11 +128,9 @@ static void mount_the_world(const char * root_dir,
   // with the same `--persist` argument will allow resuming execution inside of
   // a rootfs with the previous modifications intact.
   if (persist_dir == NULL) {
-    // We know that `/proc` will always be available on basically any Linux
-    // system, so we mount our tmpfs here.  It's also convenient because we
-    // will mount an actual `procfs` over this at the end of this function, so
-    // the overlayfs work directories are completely hidden from view.
-    persist_dir = "/proc";
+    // We know that `/bin` will always be available on basically any Linux
+    // system, so we mount our tmpfs here.
+    persist_dir = "/bin";
     userxattr = 0;
 
     // Create tmpfs to store ephemeral changes.  These changes are lost once
@@ -158,7 +140,7 @@ static void mount_the_world(const char * root_dir,
     int n = snprintf(options, 32, "size=%s", tmpfs_size);
     check(0 < n);
     check(n < 31);
-    check(0 == mount("tmpfs", "/proc", "tmpfs", 0, options));
+    check(0 == mount("tmpfs", "/bin", "tmpfs", 0, options));
   }
 
   if (verbose) {
@@ -166,6 +148,8 @@ static void mount_the_world(const char * root_dir,
   }
 
   // The first thing we do is create an overlay mounting `root_dir` over itself.
+  // We need to do this immediately as we may need to create mountpoints for
+  // the rest of our mounts within the rootfs, without modifying it.
   // `root_dir` is the path to the already-mounted rootfs image, and we are
   // mounting it as an overlay over itself, so that we can make modifications
   // without altering the actual rootfs image.  When running in privileged mode,
@@ -177,23 +161,40 @@ static void mount_the_world(const char * root_dir,
   // owned by "nobody" when we're inside the sandbox.
   check(0 == chown(root_dir, uid, gid));
 
-  // Now that we've registered persist_dit put /proc back in its place in the big world.
-  // This is necessary for certain libc APIs to function correctly again.
-  if (strcmp(persist_dir, "/proc") == 0) {
-    mount_procfs("", uid, gid);
-  }
+  // Mount all of our mounts
+  struct mount_list *entry = maps;
+  while (entry != NULL) {
+    char path[PATH_MAX];
+    char *inside = entry->mount_point;
 
-  // Mount all of our read-only mounts
-  mount_maps(root_dir, shard_maps, TRUE);
+    // Construct `${root_dir}/${mount_point}`:
+    while (inside[0] == '/') {
+      inside = inside + 1;
+    }
+    snprintf(path, sizeof(path), "%s/%s", root_dir, inside);
+
+    // bind-mount the outside path to the computed inside path,
+    // setting the bind-mount to be read-only if requested.
+    bind_mount(entry->outside_path,
+               path,
+               entry->type == MOUNT_TYPE_READONLY || entry->type == MOUNT_TYPE_OVERLAYED);
+
+    // If we're dealing with an overlayed mount, create a unique
+    // name to store the state of this mount within our `persist_dir`.
+    if (entry->type == MOUNT_TYPE_OVERLAYED) {
+      char bname[PATH_MAX];
+      hashed_basename(&bname[0], entry->mount_point);
+      check(TRUE == mount_overlay(path, path, bname, persist_dir, userxattr));
+      check(0 == chown(path, uid, gid));
+    }
+    entry = entry->prev;
+  }
 
   // Mount /proc within the sandbox.
   mount_procfs(root_dir, uid, gid);
 
   // Mount /dev stuff
   mount_dev(root_dir);
-
-  // Mount all our read-write mounts (workspaces)
-  mount_maps(root_dir, workspaces, FALSE);
 }
 
 /*
@@ -273,14 +274,14 @@ static int sandbox_main(const char * root_dir, const char * new_cd, int sandbox_
         // If we died of a signal, return that signal + 256, which we will
         // notice on the other end as a signal.
         if (WIFSIGNALED(status)) {
-          unsigned int reported_exit_code = 256 + WTERMSIG(status);
-          check(sizeof(unsigned int) == write(parent_pipe[1], &reported_exit_code, sizeof(unsigned int)));
+          uint32_t reported_exit_code = 256 + WTERMSIG(status);
+          check(sizeof(uint32_t) == write(parent_pipe[1], &reported_exit_code, sizeof(uint32_t)));
           return 0;
         }
         if (WIFEXITED(status)) {
           // Normal exits get reported in a more straightforward fashion
-          unsigned int reported_exit_code = WEXITSTATUS(status);
-          check(sizeof(unsigned int) == write(parent_pipe[1], &reported_exit_code, sizeof(unsigned int)));
+          uint32_t reported_exit_code = WEXITSTATUS(status);
+          check(sizeof(uint32_t) == write(parent_pipe[1], &reported_exit_code, sizeof(uint32_t)));
           return 0;
         }
 
@@ -366,11 +367,10 @@ int main(int sandbox_argc, char **sandbox_argv) {
       {"help",       no_argument,       NULL, 'h'},
       {"verbose",    no_argument,       NULL, 'v'},
       {"rootfs",     required_argument, NULL, 'r'},
-      {"workspace",  required_argument, NULL, 'w'},
       {"entrypoint", required_argument, NULL, 'e'},
       {"persist",    required_argument, NULL, 'p'},
       {"cd",         required_argument, NULL, 'c'},
-      {"map",        required_argument, NULL, 'm'},
+      {"mount",      required_argument, NULL, 'm'},
       {"uid",        required_argument, NULL, 'u'},
       {"gid",        required_argument, NULL, 'g'},
       {"tmpfs-size", required_argument, NULL, 't'},
@@ -419,7 +419,6 @@ int main(int sandbox_argc, char **sandbox_argv) {
           fprintf(stderr, "Parsed --cd as \"%s\"\n", new_cd);
         }
         break;
-      case 'w':
       case 'm': {
         // Find the colon in "from:to"
         char *colon = strchr(optarg, ':');
@@ -428,27 +427,41 @@ int main(int sandbox_argc, char **sandbox_argv) {
         // Extract "from" and "to"
         char *from = strndup(optarg, (colon - optarg));
         char *to = strdup(colon + 1);
-        if ((from[0] != '/') && (strncmp(from, "9p/", 3) != 0)) {
-          fprintf(stderr, "ERROR: Outside path \"%s\" must be absolute or 9p!  Ignoring...\n", from);
+        if (from[0] != '/') {
+          fprintf(stderr, "ERROR: Outside path \"%s\" must be absolute!  Ignoring...\n", from);
           break;
         }
 
-        // Construct `map_list` object for this `from:to` pair
-        struct map_list *entry = (struct map_list *) malloc(sizeof(struct map_list));
-        entry->map_path = to;
-        entry->outside_path = from;
-
-        // If this was `--map`, then add it to `maps`, if it was `--workspace` add it to `workspaces`
-        if (c == 'm') {
-          entry->prev = maps;
-          maps = entry;
-        } else {
-          entry->prev = workspaces;
-          workspaces = entry;
+        // Look for mount options
+        int mount_type = MOUNT_TYPE_READWRITE;
+        char *mount_str = strchr(to, ':');
+        if (mount_str != NULL) {
+          // Chop off the colon so `to` is NULL-terminated.
+          *mount_str = '\0';
+          mount_str++;
+          if (strcmp(mount_str, "ro") == 0) {
+            mount_type = MOUNT_TYPE_READONLY;
+          } else if (strcmp(mount_str, "ov") == 0) {
+            mount_type = MOUNT_TYPE_OVERLAYED;
+          } else if (strcmp(mount_str, "rw") == 0) {
+            mount_type = MOUNT_TYPE_READWRITE;
+          } else {
+            fprintf(stderr, "ERROR: Unknown mount type in \"%s\" -> \"%s\" with type \"%s\"!  Ignoring...\n", from, to, mount_str);
+            break;
+          }
         }
+
+        // Construct `mount_list` object for this `from:to:type` pair
+        struct mount_list *entry = (struct mount_list *) malloc(sizeof(struct mount_list));
+        entry->mount_point = to;
+        entry->outside_path = from;
+        entry->type = mount_type;
+        entry->prev = mounts;
+        mounts = entry;
+
         if (verbose) {
-          fprintf(stderr, "Parsed --%s as \"%s\" -> \"%s\"\n", c == 'm' ? "map" : "workspace",
-                  entry->outside_path, entry->map_path);
+          fprintf(stderr, "Parsed --mount as \"%s\" -> \"%s\" (\"%s\")\n",
+                  entry->outside_path, entry->mount_point, mount_str);
         }
       } break;
       case 'p':
@@ -544,7 +557,7 @@ int main(int sandbox_argc, char **sandbox_argv) {
 
     // Mount the rootfs, shards, and workspace.  We do this here because, on this machine,
     // we may not have permissions to mount overlayfs within user namespaces.
-    mount_the_world(sandbox_root, maps, workspaces, uid, gid, persist_dir, tmpfs_size);
+    mount_the_world(sandbox_root, mounts, uid, gid, persist_dir, tmpfs_size);
   }
 
   // We want to request a new PID space, a new mount space, and a new user space
@@ -582,7 +595,7 @@ int main(int sandbox_argc, char **sandbox_argv) {
     } else if (execution_mode == UNPRIVILEGED_CONTAINER_MODE) {
       // If we're in unprivileged container mode, mount the world now that we
       // have supreme cosmic power.
-      mount_the_world(sandbox_root, maps, workspaces, dst_uid, dst_gid, persist_dir, tmpfs_size);
+      mount_the_world(sandbox_root, mounts, dst_uid, dst_gid, persist_dir, tmpfs_size);
     }
 
     // Set the hostname, if that's been requested
@@ -622,13 +635,30 @@ int main(int sandbox_argc, char **sandbox_argv) {
   // Wait until the child exits.
   check(child_pid == waitpid(child_pid, &status, 0));
 
-  // Receive termination signal
-  unsigned int child_exit_code = 0;
-  check(sizeof(unsigned int) == read(parent_pipe[0], (void *)&child_exit_code, sizeof(unsigned int)));
-
   // Give back the terminal to the parent
   signal(SIGTTOU, SIG_IGN);
   tcsetpgrp(0, pgrp);
+
+  // If the child does not exit cleanly, complain:
+  if (!WIFEXITED(status) || (WIFEXITED(status) && WEXITSTATUS(status) != 0)) {
+    if (verbose) {
+      fprintf(stderr, "Child Sandbox exited uncleanly: ");
+      if (WIFEXITED(status)) {
+        fprintf(stderr, " (exit code: %d)\n", WEXITSTATUS(status));
+      } else if (WIFSIGNALED(status)) {
+        fprintf(stderr, " (signal: %d)\n", WTERMSIG(status));
+      } else {
+        fprintf(stderr, " (unknown)\n");
+      }
+    }
+
+    // Don't bother failing later; just exit now.
+    return 1;
+  }
+
+  // Receive termination signal
+  uint32_t child_exit_code = -1;
+  check(sizeof(uint32_t) == read(parent_pipe[0], (void *)&child_exit_code, sizeof(uint32_t)));
 
   // The child sandbox should alway exit cleanly, with a zero exit status.
   // The sandboxed executable's exit value will be reported via the pipes

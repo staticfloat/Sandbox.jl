@@ -1,13 +1,23 @@
 using Random, Tar
 import Tar_jll
 
-Base.@kwdef struct DockerExecutor <: SandboxExecutor
+Base.@kwdef mutable struct DockerExecutor <: SandboxExecutor
     label::String = Random.randstring(10)
     privileges::Symbol = :privileged
+    persistence_dir::Union{String,Nothing} = nothing
 end
 
 function cleanup(exe::DockerExecutor)
     success(`docker system prune --force --filter=label=$(docker_image_label(exe))`)
+
+    if exe.persistence_dir !== nothing && isdir(exe.persistence_dir)
+        # Because a lot of these files are unreadable, we must `chmod +r` them before deleting.
+        chmod_recursive(exe.persistence_dir, 0o777, true)
+        try
+            rm(exe.persistence_dir; force=true, recursive=true)
+        catch
+        end
+    end
 end
 
 Base.show(io::IO, exe::DockerExecutor) = write(io, "Docker Executor")
@@ -29,7 +39,7 @@ function executor_available(::Type{DockerExecutor}; verbose::Bool = false)
         return false
     end
     return with_executor(DockerExecutor) do exe
-        return probe_executor(exe; test_read_only_map=true, test_read_write_map=true, verbose)
+        return probe_executor(exe; verbose)
     end
 end
 
@@ -124,7 +134,7 @@ end
 
 function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user_cmd::Cmd)
     # Build the docker image that corresponds to this rootfs
-    image_name = build_docker_image(config.read_only_maps["/"], config.uid, config.gid; verbose=config.verbose)
+    image_name = build_docker_image(config.mounts["/"].host_path, config.uid, config.gid; verbose=config.verbose)
 
     if config.persist
         # If this is a persistent run, check to see if any previous runs have happened from
@@ -159,16 +169,69 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
     append!(cmd_string, ["-w", config.pwd])
 
     # Add in read-only mappings (skipping the rootfs)
-    for (dst, src) in config.read_only_maps
-        if dst == "/"
+    overlay_mappings = String[]
+    for (sandbox_path, mount_info) in config.mounts
+        if sandbox_path == "/"
             continue
         end
-        append!(cmd_string, ["-v", "$(src):$(dst):ro"])
+        local mount_type_str
+        if mount_info.type == MountType.ReadOnly
+            mount_type_str = ":ro"
+        elseif mount_info.type == MountType.Overlayed
+            mount_type_str = ":ro"
+            push!(overlay_mappings, sandbox_path)
+        elseif mount_info.type == MountType.ReadWrite
+            mount_type_str = ""
+        else
+            throw(ArgumentError("Unknown mount type: $(mount_info.type)"))
+        end
+        append!(cmd_string, ["-v", "$(mount_info.host_path):$(sandbox_path)$(mount_type_str)"])
     end
 
-    # Add in read-write mappings
-    for (dst, src) in config.read_write_maps
-        append!(cmd_string, ["-v", "$(src):$(dst)"])
+    # There are two ways to emulate overlayed mounts in Docker; either by building a
+    # new image that has `COPY` statements in its Dockerfile to copy in the directories,
+    # or by manually inserting an entrypoint into container to run the necessary `mount`
+    # statements for us.  We choose the latter as it should be much more efficient.
+    entrypoint = config.entrypoint
+    if !isempty(overlay_mappings)
+        # We need a bindmount to store our persistence data, create one now and mount it in.
+        # If we're not persistent, we generate a new one every time.
+        if exe.persistence_dir === nothing || !config.persist
+            exe.persistence_dir = mktempdir()
+        end
+        append!(cmd_string, ["-v", "$(exe.persistence_dir):/.overlayed"])
+
+        entrypoint_path = joinpath(exe.persistence_dir, "entrypoint")
+        open(entrypoint_path, write=true) do io
+            println(io, """
+            #!/bin/sh
+            """)
+
+            # For each path in our overlay mappings, we create an overlay that stores its
+            # state in our persistence directory.
+            for path in overlay_mappings
+                path_slug = "$(path)-$(string(hash(path); base=16))"
+                println(io, """
+                mkdir -p /.overlayed/$(path_slug)-upper
+                mkdir -p /.overlayed/$(path_slug)-work
+                mount -t overlay overlay -olowerdir=$(path) -oupperdir=/.overlayed/$(path_slug)-upper -oworkdir=/.overlayed/$(path_slug)-work $(path)
+                """)
+            end
+
+            # Finally, if we were given an entrypoint, sub off to that, otherwise directly execute the command:
+            if config.entrypoint !== nothing
+                println(io, "exec \"$(config.entrypoint)\"")
+            else
+                println(io, "exec \"\$@\"")
+            end
+        end
+        chmod(entrypoint_path, 0o755)
+
+        # Tell the later `--entrypoint` argument to use this
+        entrypoint = "/.overlayed/entrypoint"
+
+        # Tell Julia to clean this up before we exit
+        Base.Filesystem.temp_cleanup_later(entrypoint_path)
     end
 
     # Apply environment mappings, first from `config`, next from `user_cmd`.
@@ -182,8 +245,8 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
     end
 
     # Add in entrypoint, if it is set
-    if config.entrypoint !== nothing
-        append!(cmd_string, ["--entrypoint", config.entrypoint])
+    if entrypoint !== nothing
+        append!(cmd_string, ["--entrypoint", entrypoint])
     end
 
     if config.hostname !== nothing

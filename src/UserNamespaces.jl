@@ -51,12 +51,12 @@ end
 mutable struct UnprivilegedUserNamespacesExecutor <: UserNamespacesExecutor
     persistence_dir::Union{String,Nothing}
     userxattr::Bool
-    UnprivilegedUserNamespacesExecutor() = new(nothing)
+    UnprivilegedUserNamespacesExecutor() = new(nothing, false)
 end
 mutable struct PrivilegedUserNamespacesExecutor <: UserNamespacesExecutor
     persistence_dir::Union{String,Nothing}
     userxattr::Bool
-    PrivilegedUserNamespacesExecutor() = new(nothing)
+    PrivilegedUserNamespacesExecutor() = new(nothing, false)
 end
 
 Base.show(io::IO, exe::UnprivilegedUserNamespacesExecutor) = write(io, "Unprivileged User Namespaces Executor")
@@ -70,7 +70,7 @@ function executor_available(::Type{T}; verbose::Bool=false) where {T <: UserName
     return with_executor(T) do exe
         return check_kernel_version(;verbose) &&
                check_overlayfs_loaded(;verbose) &&
-               probe_executor(exe; test_read_only_map=true, test_read_write_map=true, verbose)
+               probe_executor(exe; verbose)
     end
 end
 
@@ -144,22 +144,27 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
     end
 
     # Extract the rootfs, as it's treated specially
-    append!(cmd_string, ["--rootfs", config.read_only_maps["/"]])
+    append!(cmd_string, ["--rootfs", config.mounts["/"].host_path])
 
     # Add our `--cd` command
     append!(cmd_string, ["--cd", config.pwd])
 
     # Add in read-only mappings (skipping the rootfs)
-    for (dst, src) in config.read_only_maps
-        if dst == "/"
+    for (sandbox_path, mount_info) in config.mounts
+        if sandbox_path == "/"
             continue
         end
-        append!(cmd_string, ["--map", "$(src):$(dst)"])
-    end
-
-    # Add in read-write mappings
-    for (dst, src) in config.read_write_maps
-        append!(cmd_string, ["--workspace", "$(src):$(dst)"])
+        local mount_type_str
+        if mount_info.type == MountType.ReadOnly
+            mount_type_str = ":ro"
+        elseif mount_info.type == MountType.ReadWrite
+            mount_type_str = ":rw"
+        elseif mount_info.type == MountType.Overlayed
+            mount_type_str = ":ov"
+        else
+            throw(ArgumentError("Unknown mount type: $(mount_info.type)"))
+        end
+        append!(cmd_string, ["--mount", "$(mount_info.host_path):$(sandbox_path)$(mount_type_str)"])
     end
 
     # Add in entrypoint, if it is set
@@ -172,7 +177,7 @@ function build_executor_command(exe::UserNamespacesExecutor, config::SandboxConf
     if config.persist
         if exe.persistence_dir === nothing
             # Search for a functional persistence directory
-            persist_root, userxattr = find_persist_dir_root(config.read_only_maps["/"]; verbose=config.verbose)
+            persist_root, userxattr = find_persist_dir_root(config.mounts["/"].host_path; verbose=config.verbose)
 
             if persist_root === nothing
                 throw(ArgumentError("Unable to find a persistence directory root that works!"))

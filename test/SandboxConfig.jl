@@ -6,9 +6,9 @@ using Test, LazyArtifacts, Sandbox
     @testset "minimal config" begin
         config = SandboxConfig(Dict("/" => rootfs_dir))
 
-        @test haskey(config.read_only_maps, "/")
-        @test config.read_only_maps["/"] == realpath(rootfs_dir)
-        @test isempty(config.read_write_maps)
+        @test haskey(config.mounts, "/")
+        @test config.mounts["/"].host_path == realpath(rootfs_dir)
+        @test isempty([m for (k, m) in config.mounts if m.type == MountType.ReadWrite])
         @test isempty(config.env)
         @test config.pwd == "/"
         @test config.stdin == Base.devnull
@@ -37,9 +37,15 @@ using Test, LazyArtifacts, Sandbox
             stderr = Base.devnull,
             hostname="sandy",
         )
-        @test config.read_only_maps["/"] == realpath(rootfs_dir)
-        @test config.read_only_maps["/lib"] == realpath(rootfs_dir)
-        @test config.read_write_maps["/workspace"] == realpath(@__DIR__)
+
+        # Test the old style API getting mapped to the new MountInfo API:
+        @test config.mounts["/"].host_path == realpath(rootfs_dir)
+        @test config.mounts["/"].type == MountType.Overlayed
+        @test config.mounts["/lib"].host_path == realpath(rootfs_dir)
+        @test config.mounts["/lib"].type == MountType.ReadOnly
+        @test config.mounts["/workspace"].host_path == realpath(@__DIR__)
+        @test config.mounts["/workspace"].type == MountType.ReadWrite
+
         @test config.env["PATH"] == "/bin:/usr/bin"
         @test config.entrypoint == "/init"
         @test config.pwd == "/lib"
