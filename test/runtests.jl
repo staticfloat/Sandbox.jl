@@ -45,5 +45,8 @@ include("SandboxConfig.jl")
 include("UserNamespaces.jl")
 include("Docker.jl")
 include("Sandbox.jl")
-include("Nesting.jl")
-include("Multiarch.jl")
+
+if Sys.islinux()
+    include("Nesting.jl")
+    include("Multiarch.jl")
+end
