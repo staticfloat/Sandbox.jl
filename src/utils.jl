@@ -247,18 +247,47 @@ function sudo_cmd()
     return _sudo_cmd
 end
 
-function default_persist_root_dirs()
-    dirs = String[]
+_env_pref_dict = Dict{AbstractString,Union{AbstractString,Nothing}}()
+"""
+    load_env_pref(env_var, prefs_name, default)
 
-    # If the user has set a persistence dir preference, of course try that first:
-    ppd_pref = @load_preference("persist_dir", nothing)
-    if ppd_pref !== nothing
-        push!(dirs, ppd_pref)
+Many pieces of `Sandbox.jl` functionality can be controlled either through
+environment variables or preferences.  This utility function makes it easy
+to check first the environment, then preferences, finally falling back to
+the default.  Additionally, it memoizes the result in a caching dictionary.
+"""
+function load_env_pref(env_var::AbstractString, prefs_name::AbstractString,
+                       default::Union{AbstractString,Nothing})
+    if !haskey(_env_pref_dict, env_var)
+        _env_pref_dict[env_var] = get(ENV, env_var, @load_preference(prefs_name, default))
     end
+
+    return _env_pref_dict[env_var]
+end
+
+"""
+    default_persist_root_dirs()
+
+Returns the default list of directories that should be attempted to be used as
+persistence storage.  Influenced by the `SANDBOX_PERSISTENCE_DIR` environment
+variable, as well as the `persist_dir` preference.  The last place searched by
+default is the `persist_dirs` scratch space.
+"""
+function default_persist_root_dirs()
+    # While this function appears to be duplicating much of the logic within
+    # `load_env_pref()`, it actually collects all of the given values, rather
+    # than choosing just one.
+    dirs = String[]
 
     # When doing nested sandboxing, we pass information via environment variables:
     if haskey(ENV, "SANDBOX_PERSISTENCE_DIR")
         push!(dirs, ENV["SANDBOX_PERSISTENCE_DIR"])
+    end
+
+    # If the user has set a persistence dir preference, try that too
+    ppd_pref = @load_preference("persist_dir", nothing)
+    if ppd_pref !== nothing
+        push!(dirs, ppd_pref)
     end
 
     # Storing in a scratch space (which is within our writable depot) usually works,

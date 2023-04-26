@@ -72,6 +72,7 @@ using Test, LazyArtifacts, Sandbox
     using Sandbox: realpath_stem
     @testset "realpath_stem" begin
         mktempdir() do dir
+            dir = realpath(dir)
             mkdir(joinpath(dir, "bar"))
             touch(joinpath(dir, "bar", "foo"))
             symlink("foo", joinpath(dir, "bar", "l_foo"))

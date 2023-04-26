@@ -18,7 +18,6 @@ end
 @testset "Nesting Sandbox.jl" begin
     all_executors = Sandbox.all_executors
     rootfs_dir = Sandbox.debian_rootfs()
-    sandbox_dir = dirname(Sandbox.UserNSSandbox_jll.sandbox_path)
     for executor in all_executors
         if !executor_available(executor)
             @error("Skipping $(executor) tests, as it does not seem to be available")
@@ -53,10 +52,14 @@ end
                     "/project" => dirname(Base.active_project()),
                     # Mount in a Julia that can run in this sandbox
                     "/usr/local/julia" => get_nestable_julia(),
-                    # On the off-chance that we're using a custom `sandbox`,
-                    # make sure it's available at the path that the project will expect
-                    sandbox_dir => sandbox_dir,
                 )
+
+                # On the off-chance that we're using a custom `sandbox`,
+                # make sure it's available at the path that the project will expect
+                if UserNSSandbox_jll.is_available()
+                    sandbox_path = dirname(Sandbox.UserNSSandbox_jll.sandbox_path)
+                    ro_mappings[sandbox_path] = sandbox_path
+                end
 
                 # Mount in `/etc/resolv.conf` as a read-only mount if using a UserNS executor, so that we have DNS
                 if executor <: UserNamespacesExecutor && isfile("/etc/resolv.conf")

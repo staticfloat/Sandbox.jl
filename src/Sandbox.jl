@@ -61,14 +61,7 @@ all_executors = Type{<:SandboxExecutor}[
 
 function select_executor(verbose::Bool)
     # If `FORCE_SANDBOX_MODE` is set, we're a nested Sandbox.jl invocation, and we should always use whatever it says
-    executor = nothing
-    if haskey(ENV, "FORCE_SANDBOX_MODE")
-        executor = ENV["FORCE_SANDBOX_MODE"]
-    else
-        # If we have a preference set, use that.
-        executor = @load_preference("executor")
-    end
-
+    executor = load_env_pref("FORCE_SANDBOX_MODE", "executor", nothing)
     if executor !== nothing
         executor = lowercase(executor)
         if executor ∈ ("unprivilegedusernamespacesexecutor", "unprivileged", "userns")

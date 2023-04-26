@@ -4,37 +4,35 @@ import Tar_jll
 Base.@kwdef mutable struct DockerExecutor <: SandboxExecutor
     label::String = Random.randstring(10)
     privileges::Symbol = :privileged
-    persistence_dir::Union{String,Nothing} = nothing
+end
+
+function docker_exe()
+    return load_env_pref(
+        "SANDBOX_DOCKER_EXE",
+        "docker_exe",
+        something(Sys.which.(("docker", "podman"))..., Some(nothing)),
+    )
 end
 
 function cleanup(exe::DockerExecutor)
-    success(`docker system prune --force --filter=label=$(docker_image_label(exe))`)
-
-    if exe.persistence_dir !== nothing && isdir(exe.persistence_dir)
-        # Because a lot of these files are unreadable, we must `chmod +r` them before deleting.
-        chmod_recursive(exe.persistence_dir, 0o777, true)
-        try
-            rm(exe.persistence_dir; force=true, recursive=true)
-        catch
-        end
-    end
+    success(`$(docker_exe()) system prune --force --filter=label=$(docker_image_label(exe))`)
 end
 
 Base.show(io::IO, exe::DockerExecutor) = write(io, "Docker Executor")
 
 function executor_available(::Type{DockerExecutor}; verbose::Bool = false)
     # don't even try to exec if it doesn't exist
-    if Sys.which("docker") === nothing
+    if docker_exe() === nothing
         if verbose
-            @info("No `docker` command found; docker unavailable")
+            @info("No `docker` or `podman` command found; DockerExecutor unavailable")
         end
         return false
     end
 
     # Return true if we can `docker ps`; if we can't, then there's probably a permissions issue
-    if !success(`docker ps`)
+    if !success(`$(docker_exe()) ps`)
         if verbose
-            @warn("Unable to run `docker ps`; perhaps you're not in the `docker` group?")
+            @warn("Unable to run `$(docker_exe()) ps`; perhaps you're not in the `docker` group?")
         end
         return false
     end
@@ -68,19 +66,21 @@ function save_timestamp(image_name::String, timestamp::Float64)
     end
 end
 
-docker_image_name(root_path::String, uid::Cint, gid::Cint) = "sandbox_rootfs:$(string(Base._crc32c(root_path), base=16))-$(uid)-$(gid)"
+function docker_image_name(paths::Dict{String,String}, uid::Cint, gid::Cint)
+    hash = foldl(⊻, vcat(Base._crc32c.(keys(paths))..., Base._crc32c.(values(paths))))
+    return "sandbox_rootfs:$(string(hash, base=16))-$(uid)-$(gid)"
+end
 docker_image_label(exe::DockerExecutor) = string("org.julialang.sandbox.jl=", exe.label)
-function should_build_docker_image(root_path::String, uid::Cint, gid::Cint)
+function should_build_docker_image(paths::Dict{String,String}, uid::Cint, gid::Cint)
     # If the image doesn't exist at all, always return true
-    image_name = docker_image_name(root_path, uid, gid)
-    if !success(`docker image inspect $(image_name)`)
+    image_name = docker_image_name(paths, uid, gid)
+    if !success(`$(docker_exe()) image inspect $(image_name)`)
         return true
     end
 
     # If this image has been built before, compare its historical timestamp to the current one
-    curr_ctime = max_directory_ctime(root_path)
     prev_ctime = get(load_timestamps(), image_name, 0.0)
-    return curr_ctime != prev_ctime
+    return any(max_directory_ctime(path) > prev_ctime for path in values(paths))
 end
 
 """
@@ -92,25 +92,34 @@ things on top of that, with no recursive mounting.  We cut down on unnecessary w
 somewhat by quick-scanning the directory for changes and only rebuilding if changes
 are detected.
 """
-function build_docker_image(root_path::String, uid::Cint, gid::Cint; verbose::Bool = false)
-    image_name = docker_image_name(root_path, uid, gid)
-    if should_build_docker_image(root_path, uid, gid)
-        max_ctime = max_directory_ctime(root_path)
+function build_docker_image(mounts::Dict, uid::Cint, gid::Cint; verbose::Bool = false)
+    overlayed_paths = Dict(path => m.host_path for (path, m) in mounts if m.type == MountType.Overlayed)
+    image_name = docker_image_name(overlayed_paths, uid, gid)
+    if should_build_docker_image(overlayed_paths, uid, gid)
+        max_ctime = maximum(max_directory_ctime(path) for path in values(overlayed_paths))
         if verbose
-            @info("Building docker image $(image_name) with max timestamp $(max_ctime)")
+            @info("Building docker image $(image_name) with max timestamp 0x$(string(round(UInt64, max_ctime), base=16))")
         end
 
+        # We're going to tar up all Overlayed mounts, using `--transform` to convert our host paths
+        # to the required destination paths.
+        tar_cmds = String[]
+        append!(tar_cmds, ["--transform=s&$(host[2:end])&$(dst[2:end])&" for (dst, host) in overlayed_paths])
+        append!(tar_cmds, [host for (_, host) in overlayed_paths])
+
         # Build the docker image
-        open(`docker import - $(image_name)`, "w", verbose ? stdout : devnull) do io
+        open(`$(docker_exe()) import - $(image_name)`, "w", verbose ? stdout : devnull) do io
             # We need to record permissions, and therefore we cannot use Tar.jl.
             # Some systems (e.g. macOS) ship with a BSD tar that does not support the
             # `--owner` and `--group` command-line options. Therefore, if Tar_jll is
             # available, we use the GNU tar provided by Tar_jll. If Tar_jll is not available,
             # we fall back to the system tar.
-            cd(root_path) do
-                tar = Tar_jll.is_available() ? Tar_jll.tar() : `tar`
-                run(pipeline(`$(tar) -c --owner=$(uid) --group=$(gid) .`, stdout=io))
-            end
+            tar = Tar_jll.is_available() ? Tar_jll.tar() : `tar`
+            run(pipeline(
+                `$(tar) -c --owner=$(uid) --group=$(gid) $(tar_cmds)`,
+                stdout=io,
+                stderr=verbose ? stderr : devnull,
+            ))
         end
 
         # Record that we built it
@@ -121,20 +130,20 @@ function build_docker_image(root_path::String, uid::Cint, gid::Cint; verbose::Bo
 end
 
 function commit_previous_run(exe::DockerExecutor, image_name::String)
-    ids = split(readchomp(`docker ps -a --filter label=$(docker_image_label(exe)) --format "{{.ID}}"`))
+    ids = split(readchomp(`$(docker_exe()) ps -a --filter label=$(docker_image_label(exe)) --format "{{.ID}}"`))
     if isempty(ids)
         return image_name
     end
 
     # We'll take the first docker container ID that we get, as its the most recent, and commit it.
     image_name = "sandbox_rootfs_persist:$(first(ids))"
-    run(`docker commit $(first(ids)) $(image_name)`)
+    run(`$(docker_exe()) commit $(first(ids)) $(image_name)`)
     return image_name
 end
 
 function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user_cmd::Cmd)
     # Build the docker image that corresponds to this rootfs
-    image_name = build_docker_image(config.mounts["/"].host_path, config.uid, config.gid; verbose=config.verbose)
+    image_name = build_docker_image(config.mounts, config.uid, config.gid; verbose=config.verbose)
 
     if config.persist
         # If this is a persistent run, check to see if any previous runs have happened from
@@ -158,7 +167,7 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
     else
         throw(ArgumentError("invalid value for exe.privileges: $(exe.privileges)"))
     end
-    cmd_string = String["docker", "run", privilege_args..., "-i", "--label", docker_image_label(exe)]
+    cmd_string = String[docker_exe(), "run", privilege_args..., "-i", "--label", docker_image_label(exe)]
 
     # If we're doing a fully-interactive session, tell it to allocate a psuedo-TTY
     if all(isa.((config.stdin, config.stdout, config.stderr), Base.TTY))
@@ -178,60 +187,13 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
         if mount_info.type == MountType.ReadOnly
             mount_type_str = ":ro"
         elseif mount_info.type == MountType.Overlayed
-            mount_type_str = ":ro"
-            push!(overlay_mappings, sandbox_path)
+            continue
         elseif mount_info.type == MountType.ReadWrite
             mount_type_str = ""
         else
             throw(ArgumentError("Unknown mount type: $(mount_info.type)"))
         end
         append!(cmd_string, ["-v", "$(mount_info.host_path):$(sandbox_path)$(mount_type_str)"])
-    end
-
-    # There are two ways to emulate overlayed mounts in Docker; either by building a
-    # new image that has `COPY` statements in its Dockerfile to copy in the directories,
-    # or by manually inserting an entrypoint into container to run the necessary `mount`
-    # statements for us.  We choose the latter as it should be much more efficient.
-    entrypoint = config.entrypoint
-    if !isempty(overlay_mappings)
-        # We need a bindmount to store our persistence data, create one now and mount it in.
-        # If we're not persistent, we generate a new one every time.
-        if exe.persistence_dir === nothing || !config.persist
-            exe.persistence_dir = mktempdir()
-        end
-        append!(cmd_string, ["-v", "$(exe.persistence_dir):/.overlayed"])
-
-        entrypoint_path = joinpath(exe.persistence_dir, "entrypoint")
-        open(entrypoint_path, write=true) do io
-            println(io, """
-            #!/bin/sh
-            """)
-
-            # For each path in our overlay mappings, we create an overlay that stores its
-            # state in our persistence directory.
-            for path in overlay_mappings
-                path_slug = "$(path)-$(string(hash(path); base=16))"
-                println(io, """
-                mkdir -p /.overlayed/$(path_slug)-upper
-                mkdir -p /.overlayed/$(path_slug)-work
-                mount -t overlay overlay -olowerdir=$(path) -oupperdir=/.overlayed/$(path_slug)-upper -oworkdir=/.overlayed/$(path_slug)-work $(path)
-                """)
-            end
-
-            # Finally, if we were given an entrypoint, sub off to that, otherwise directly execute the command:
-            if config.entrypoint !== nothing
-                println(io, "exec \"$(config.entrypoint)\"")
-            else
-                println(io, "exec \"\$@\"")
-            end
-        end
-        chmod(entrypoint_path, 0o755)
-
-        # Tell the later `--entrypoint` argument to use this
-        entrypoint = "/.overlayed/entrypoint"
-
-        # Tell Julia to clean this up before we exit
-        Base.Filesystem.temp_cleanup_later(entrypoint_path)
     end
 
     # Apply environment mappings, first from `config`, next from `user_cmd`.
@@ -245,8 +207,8 @@ function build_executor_command(exe::DockerExecutor, config::SandboxConfig, user
     end
 
     # Add in entrypoint, if it is set
-    if entrypoint !== nothing
-        append!(cmd_string, ["--entrypoint", entrypoint])
+    if config.entrypoint !== nothing
+        append!(cmd_string, ["--entrypoint", config.entrypoint])
     end
 
     if config.hostname !== nothing
@@ -307,7 +269,7 @@ function export_docker_image(image_name::String,
     end
 
     # Get a container ID ready to be passed to `docker export`
-    container_id = readchomp(`docker create $(image_name) /bin/true`)
+    container_id = readchomp(`$(docker_exe()) create $(image_name) /bin/true`)
 
     # Get the ID of that container (since we can't export by label, sadly)
     if isempty(container_id)
@@ -320,14 +282,14 @@ function export_docker_image(image_name::String,
     # Export the container filesystem to a directory
     try
         mkpath(output_dir)
-        open(`docker export $(container_id)`) do tar_io
+        open(`$(docker_exe()) export $(container_id)`) do tar_io
             Tar.extract(tar_io, output_dir) do hdr
                 # Skip known troublesome files
                 return hdr.type ∉ (:chardev,)
             end
         end
     finally
-        run(`docker rm -f $(container_id)`)
+        run(`$(docker_exe()) rm -f $(container_id)`)
     end
     return output_dir
 end
@@ -347,7 +309,7 @@ image with `platform`.
 """
 function pull_docker_image(image_name::String,
                            output_dir::String = @get_scratch!("docker-$(sanitize_key(image_name))");
-                           platform::String = "",
+                           platform::Union{String,Nothing} = nothing,
                            force::Bool = false,
                            verbose::Bool = false)
     if ispath(output_dir) && !isempty(readdir(output_dir))
@@ -363,12 +325,10 @@ function pull_docker_image(image_name::String,
 
     # Pull the latest version of the image
     try
-        p = isempty(platform) ? `` : `--platform $(platform)`
-        run(`docker pull $(p) $(image_name)`)
-    catch
-        if verbose
-            @warn("Cannot pull", image_name)
-        end
+        p = platform === nothing ? `` : `--platform $(platform)`
+        run(`$(docker_exe()) pull $(p) $(image_name)`)
+    catch e
+        @warn("Cannot pull", image_name, e)
         return nothing
     end
 
