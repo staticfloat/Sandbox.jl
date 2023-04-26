@@ -141,16 +141,20 @@ for executor in all_executors
             mktempdir() do dir
                 stdout = IOBuffer()
                 stderr = IOBuffer()
+                mkpath(joinpath(dir, "read_only"))
+                mkpath(joinpath(dir, "read_write"))
+                mkpath(joinpath(dir, "overlayed"))
                 config = SandboxConfig(
                     Dict(
                         "/" => MountInfo(rootfs_dir, MountType.Overlayed),
-                        "/read_only" => MountInfo(dir, MountType.ReadOnly),
-                        "/read_write" => MountInfo(dir, MountType.ReadWrite),
-                        "/overlayed" => MountInfo(dir, MountType.Overlayed),
+                        "/read_only" => MountInfo(joinpath(dir, "read_only"), MountType.ReadOnly),
+                        "/read_write" => MountInfo(joinpath(dir, "read_write"), MountType.ReadWrite),
+                        "/overlayed" => MountInfo(joinpath(dir, "overlayed"), MountType.Overlayed),
                     );
                     stdout,
                     stderr,
                     persist=false,
+                    #verbose=executor == DockerExecutor,
                 )
                 # Modifying the rootfs works, and is temporary; for docker containers this is modifying
                 # the rootfs image, for userns this is all mounted within an overlay backed by a tmpfs,
@@ -169,19 +173,18 @@ for executor in all_executors
                     # An actual read-only mount will not allow writing, because it's truly read-only
                     @test !success(exe, config, ignorestatus(`/bin/sh -c "echo aperture >> /read_only/science && cat /read_only/science"`))
                     @test occursin("Read-only file system", String(take!(stderr)))
-                    @test !isfile(joinpath(dir, "science"))
+                    @test !isfile(joinpath(dir, "read_only", "science"))
 
                     # A read-write mount, on the other hand, will be permanent, and visible to the host
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`)
                     @test String(take!(stdout)) == "aperture\n";
                     @test print_if_nonempty(take!(stderr))
-                    @test isfile(joinpath(dir, "science"))
+                    @test isfile(joinpath(dir, "read_write", "science"))
 
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /read_write/science && cat /read_write/science"`)
                     @test String(take!(stdout)) == "aperture\naperture\n";
                     @test print_if_nonempty(take!(stderr))
-                    @test isfile(joinpath(dir, "science"))
-                    rm(joinpath(dir, "science"))
+                    @test isfile(joinpath(dir, "read_write", "science"))
 
                     # An overlay mount allows writing and reading, but does not modify the host environment.
                     # Because this is a non-persistent executor, changes are lost from invocation to invocation.
@@ -191,6 +194,7 @@ for executor in all_executors
                     @test success(exe, config, `/bin/sh -c "echo aperture >> /overlayed/science && cat /overlayed/science"`)
                     @test String(take!(stdout)) == "aperture\n";
                     @test print_if_nonempty(take!(stderr))
+                    @test !isfile(joinpath(dir, "overlayed", "science"))
                 end
             end
         end
