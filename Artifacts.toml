@@ -1,42 +1,42 @@
 [debian-minimal-rootfs-x86_64]
-git-tree-sha1 = "4d66e139e0bcfdfa5ec6a8942a938e754e17860f"
+git-tree-sha1 = "16738e2d713323e608ff891cb66de38d9d667d45"
 lazy = true
 
     [[debian-minimal-rootfs-x86_64.download]]
-    sha256 = "da7d20f2c4ada16db37a518fc2328ccf17d45d9b43fbae7d5cfb72fcde25219d"
-    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.45/debian_minimal.x86_64.tar.gz"
+    sha256 = "5be53620d001a4907e5471689d1876dfd26f7e7d8e14af6424418218d0eb4e08"
+    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.53/debian_minimal.x86_64.tar.gz"
 
 [debian-minimal-rootfs-i686]
-git-tree-sha1 = "80ffa08dc6ab7fbb49ab4ca95c3e167be3127f26"
+git-tree-sha1 = "6acbceb9cb6e0dca4165cb0ba6935595601592a7"
 lazy = true
 
     [[debian-minimal-rootfs-i686.download]]
-    sha256 = "543eb311c6ea551287f67353be1dbb6e4079d991233174a4daab9e34078a9885"
-    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.45/debian_minimal.i686.tar.gz"
+    sha256 = "d69ccf1f27808593be02dfdb5c2fb93e3e5098138a25b8dcb0e5d884b8c2f707"
+    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.53/debian_minimal.i686.tar.gz"
 
 [debian-minimal-rootfs-aarch64]
-git-tree-sha1 = "792c9f5b7366dba290cb4cb0755094085d245891"
+git-tree-sha1 = "14e9dcabf9b1eb2870158b06f16fc3742b53c493"
 lazy = true
 
     [[debian-minimal-rootfs-aarch64.download]]
-    sha256 = "47c1ca4494013acddbff347856f3f61a3d1e0d61d7a04833fb75f2b95e01f9b4"
-    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.45/debian_minimal.aarch64.tar.gz"
+    sha256 = "95e703a9fe9297eebb379b42743d990f89f500fedea437fb9282809f7db4eee4"
+    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.53/debian_minimal.aarch64.tar.gz"
 
 [debian-minimal-rootfs-armv7l]
-git-tree-sha1 = "eb097fdfa2f3de418da8f631ef5243e0c8ac4845"
+git-tree-sha1 = "b872b7f932fd3c04945f213e484a99830aef90e5"
 lazy = true
 
     [[debian-minimal-rootfs-armv7l.download]]
-    sha256 = "2d3c5ab50bc9fabceb0d456be35f65128af0f1491fb126165555dd8d8d7e4307"
-    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.45/debian_minimal.armv7l.tar.gz"
+    sha256 = "dd1f98b273a5322532bd64796326b1c0132a70f4cee1ad77270e6e307a646c05"
+    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.53/debian_minimal.armv7l.tar.gz"
 
 [debian-minimal-rootfs-powerpc64le]
-git-tree-sha1 = "245064ccaf65c2a8de08c4766f6362322388eda4"
+git-tree-sha1 = "b77c22a4a1dff4bdde33d07fb02146ad3a58bd88"
 lazy = true
 
     [[debian-minimal-rootfs-powerpc64le.download]]
-    sha256 = "ebbdc54ab02f731738a8a49e237c1e588c191eed3d894b0e3f21cddbac8eba44"
-    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.45/debian_minimal.ppc64le.tar.gz"
+    sha256 = "1a2293147ccf9a158b0a272ba5dee48c0206a172a002a2556fa0296a71b5cec7"
+    url = "https://github.com/JuliaCI/rootfs-images/releases/download/v5.53/debian_minimal.ppc64le.tar.gz"
 
 [multiarch-rootfs]
 git-tree-sha1 = "b9bc181be08c4a0598539af7ef93340778df527c"
