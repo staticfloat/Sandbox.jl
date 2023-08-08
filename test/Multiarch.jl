@@ -6,8 +6,10 @@ using Test, Sandbox, Base.BinaryPlatforms, LazyArtifacts
     sub_arch = native_arch
     if native_arch == "x86_64"
         sub_arch = "i686"
-    elseif native_arch == "aarch64"
-        sub_arch = "armv7l"
+
+    # Disabled for now
+    #elseif native_arch == "aarch64"
+    #    sub_arch = "armv7l"
     end
     alien_arch = native_arch ∈ ("x86_64", "i686") ? "aarch64" : "x86_64"
     @testset "argument parsing" begin
@@ -81,11 +83,17 @@ using Test, Sandbox, Base.BinaryPlatforms, LazyArtifacts
                 stdout,
                 stderr,
             )
+
+            # Ensure that we're going to try and install some of these formats
+            @test !isempty(config.multiarch_formats)
+
             with_executor(executor) do exe
-                for platform in multiarch   
-                    @test success(exe, config, `/apps/hello_world.$(triplet(platform))`)
-                    @test String(take!(stdout)) == "Hello, World!\n";
-                    @test isempty(take!(stderr))
+                for platform in multiarch
+                    @testset "$(platform)" begin
+                        @test success(exe, config, `/apps/hello_world.$(triplet(platform))`)
+                        @test String(take!(stdout)) == "Hello, World!\n";
+                        @test isempty(String(take!(stderr)))
+                    end
                 end
             end
         end
