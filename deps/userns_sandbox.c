@@ -259,35 +259,38 @@ static int sandbox_main(const char * root_dir, const char * new_cd, int sandbox_
 
   // Let's perform normal init functions, handling signals from orphaned
   // children, etc
-  sigset_t waitset;
-  sigemptyset(&waitset);
-  sigaddset(&waitset, SIGCHLD);
-  sigprocmask(SIG_BLOCK, &waitset, NULL);
   for (;;) {
-    int sig;
-    sigwait(&waitset, &sig);
-
-    pid_t reaped_pid;
-    while ((reaped_pid = waitpid(-1, &status, 0)) != -1) {
-      if (reaped_pid == child_pid) {
-        // If it was the main pid that exited, we're going to exit too.
-        // If we died of a signal, return that signal + 256, which we will
-        // notice on the other end as a signal.
-        if (WIFSIGNALED(status)) {
-          uint32_t reported_exit_code = 256 + WTERMSIG(status);
-          check(sizeof(uint32_t) == write(parent_pipe[1], &reported_exit_code, sizeof(uint32_t)));
-          return 0;
-        }
-        if (WIFEXITED(status)) {
-          // Normal exits get reported in a more straightforward fashion
-          uint32_t reported_exit_code = WEXITSTATUS(status);
-          check(sizeof(uint32_t) == write(parent_pipe[1], &reported_exit_code, sizeof(uint32_t)));
-          return 0;
-        }
-
-        // Unsure what's going on here, but it isn't good.
+    pid_t reaped_pid = waitpid(-1, &status, 0);
+    if (reaped_pid == -1) {
+      if (errno == ECHILD) {
+        // Somehow we missed the reaping of our child - this shouldn't happen,
+        // but let's make sure we don't hang forever if it somehow does.
+        check(-2);
+      }
+      if (errno != EINTR) {
+        // Some other unexpected error
         check(-1);
       }
+      continue;
+    }
+    if (reaped_pid == child_pid) {
+      // If it was the main pid that exited, we're going to exit too.
+      // If we died of a signal, return that signal + 256, which we will
+      // notice on the other end as a signal.
+      if (WIFSIGNALED(status)) {
+        uint32_t reported_exit_code = 256 + WTERMSIG(status);
+        check(sizeof(uint32_t) == write(parent_pipe[1], &reported_exit_code, sizeof(uint32_t)));
+        return 0;
+      }
+      if (WIFEXITED(status)) {
+        // Normal exits get reported in a more straightforward fashion
+        uint32_t reported_exit_code = WEXITSTATUS(status);
+        check(sizeof(uint32_t) == write(parent_pipe[1], &reported_exit_code, sizeof(uint32_t)));
+        return 0;
+      }
+
+      // Unsure what's going on here, but it isn't good.
+      check(-1);
     }
   }
 }
