@@ -125,12 +125,17 @@ void signal_passthrough(int sig) {
 // The list of signals that we will forward to our child process
 int forwarded_signals[] = {
   SIGHUP,
-  SIGPIPE,
-  SIGSTOP,
   SIGINT,
-  SIGTERM,
+  SIGQUIT,
   SIGUSR1,
   SIGUSR2,
+  SIGTERM,
+  SIGCONT,
+  SIGSTOP,
+  SIGTSTP,
+  SIGTTIN,
+  SIGTTOU,
+  SIGWINCH
 };
 
 void setup_signal_forwarding() {
