@@ -1,18 +1,31 @@
 using Test, Sandbox, Scratch, Pkg, Base.BinaryPlatforms
 
-function get_nestable_julia(target_arch = arch(HostPlatform()), version=v"1.8.1")
-    julia_dir = @get_scratch!("julia-$(target_arch)-$(version)")
-    if !isfile(joinpath(julia_dir, "julia-$(version)", "bin", "julia"))
+curr_version() = VersionNumber(VERSION.major, VERSION.minor, VERSION.patch)
+function get_nestable_julia(target_arch = arch(HostPlatform()), version=VERSION)
+    function get_julia_url()
         arch_folder = target_arch
         if target_arch == "x86_64"
             arch_folder = "x64"
         elseif target_arch == "i686"
             arch_folder = "x86"
         end
-        url = "https://julialang-s3.julialang.org/bin/linux/$(arch_folder)/$(version.major).$(version.minor)/julia-$(version)-linux-$(target_arch).tar.gz"            
+
+        if !isempty(version.prerelease)
+            # Get the latest version in this major.minor series:
+            return "https://julialangnightlies-s3.julialang.org/bin/linux/$(target_arch)/$(version.major).$(version.minor)/julia-latest-linux-$(target_arch).tar.gz"
+        else
+            return "https://julialang-s3.julialang.org/bin/linux/$(arch_folder)/$(version.major).$(version.minor)/julia-$(version)-linux-$(target_arch).tar.gz"
+        end
+    end
+
+    sanitized_version = VersionNumber(version.major, version.minor, version.patch)
+    julia_dir = @get_scratch!("julia-$(target_arch)-$(sanitized_version)")
+    if !isfile(joinpath(julia_dir, "julia-$(sanitized_version)", "bin", "julia"))
+        url = get_julia_url()
+        rm(julia_dir; force=true, recursive=true)
         Pkg.PlatformEngines.download_verify_unpack(url, nothing, julia_dir; ignore_existence=true, verbose=true)
     end
-    return joinpath(julia_dir, "julia-$(version)")
+    return joinpath(julia_dir, only(readdir(julia_dir)))
 end
 
 @testset "Nesting Sandbox.jl" begin
