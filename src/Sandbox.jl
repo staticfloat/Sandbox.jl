@@ -183,8 +183,10 @@ function probe_executor(executor::SandboxExecutor; verbose::Bool = false)
         cmd_stdout = String(take!(cmd_stdout))
         stdout_lines = split(cmd_stdout, "\n")
         if !("hello julia" in stdout_lines)
+            cmd_stderr = String(take!(cmd_stderr))
+            stderr_lines = split(cmd_stderr, "\n")
             if verbose
-                @warn(" -> Basic stdout sentinel missing!", stdout_lines)
+                @warn(" -> Basic stdout sentinel missing!", stdout_lines, stderr_lines)
             end
             return false
         end
